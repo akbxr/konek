@@ -1,0 +1,16 @@
+[Unit]
+Description=Konek - Telegram Bot for Herdr
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Code/projects/konek
+ExecStart=%h/Code/projects/konek/konek
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/Code/projects/konek/konek.log
+StandardError=append:%h/Code/projects/konek/konek.error.log
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:%h/.local/bin"
+
+[Install]
+WantedBy=default.target

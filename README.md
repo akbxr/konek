@@ -38,8 +38,8 @@ Edit `.env`:
 ```env
 TELEGRAM_BOT_TOKEN="your_token_from_botfather"
 TELEGRAM_ALLOWED_USER_IDS="123456789"
-HERDR_BIN_PATH="/Users/akbar/.local/bin/herdr"
-DEFAULT_CWD="/Users/akbar/Code/projects"
+HERDR_BIN_PATH="/Users/user/.local/bin/herdr"
+DEFAULT_CWD="/Users/user/Code/projects"
 ```
 
 To authorize multiple users, separate their IDs with commas in `TELEGRAM_ALLOWED_USER_IDS`.
@@ -78,9 +78,11 @@ Send `/start` in Telegram to initialize the navigation keyboard.
 - `/img <path>`. Uploads an image from the host machine directly to your Telegram chat (e.g. `/img screenshot.png` or an absolute path).
 - `/menu`. Reopens the persistent bottom navigation keyboard if closed.
 
-## Running in the background with macOS launchd
+## Running in the background
 
-To run the bot as an automatic background service on macOS:
+### macOS (launchd)
+
+To run Konek automatically on login:
 
 ```bash
 # Copy plist configuration to LaunchAgents
@@ -90,7 +92,7 @@ cp dev.konek.bot.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/dev.konek.bot.plist
 ```
 
-To check service status:
+To check status:
 
 ```bash
 launchctl list | grep dev.konek.bot
@@ -101,6 +103,73 @@ To stop the service:
 ```bash
 launchctl unload ~/Library/LaunchAgents/dev.konek.bot.plist
 ```
+
+### Linux (systemd)
+
+To run Konek as a persistent user service:
+
+```bash
+# Ensure user systemd directory exists
+mkdir -p ~/.config/systemd/user
+
+# Copy the unit file
+cp konek.service ~/.config/systemd/user/
+
+# Reload daemon and start service
+systemctl --user daemon-reload
+systemctl --user enable --now konek.service
+```
+
+To keep the service running even after logout:
+
+```bash
+loginctl enable-linger $USER
+```
+
+To check logs:
+
+```bash
+journalctl --user -u konek.service -f
+```
+
+To stop or restart:
+
+```bash
+systemctl --user stop konek.service
+systemctl --user restart konek.service
+```
+
+### Windows
+
+#### Option 1: Task Scheduler (at logon, no console window)
+
+You can register `start-konek.vbs` to run silently on login without an open command prompt:
+
+```cmd
+schtasks /create /tn "KonekBot" /tr "wscript.exe \"C:\path\to\konek\start-konek.vbs\"" /sc onlogon
+```
+
+To delete the scheduled task:
+
+```cmd
+schtasks /delete /tn "KonekBot" /f
+```
+
+#### Option 2: NSSM (Windows Service)
+
+Install and supervise `konek.exe` as a native Windows service using NSSM:
+
+```cmd
+nssm install Konek "C:\path\to\konek\konek.exe"
+nssm set Konek AppDirectory "C:\path\to\konek"
+nssm start Konek
+```
+
+#### Option 3: WSL (Windows Subsystem for Linux)
+
+If running inside WSL2, enable systemd in `/etc/wsl.conf` and use the Linux `systemd` setup above.
+
+### Log files
 
 Logs are written to the project directory:
 - `konek.log` for standard output
