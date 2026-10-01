@@ -65,7 +65,7 @@ Ketik `/start` di Telegram untuk membuka menu navigasi.
 - `/agents`. Menampilkan daftar agent yang sedang berjalan untuk dipilih sebagai target aktif.
 - `/status`. Menampilkan detail status agent yang sedang aktif (nama project, harness, status, direktori kerja).
 - `/read [N]`. Tanpa angka, perintah ini mengambil jawaban lengkap terakhir dari session transcript. Dengan angka (misal `/read 50`), bot membaca N baris log terminal aktif.
-- `/stop`. Mengirim sinyal Ctrl+C ke agent aktif untuk membatalkan proses yang sedang berjalan.
+- `/abort` atau `/stop`. Membatalkan dan menghentikan proses turn agent yang sedang berjalan seketika.
 - `/keys <key>`. Mengirim tombol tertentu ke terminal agent (contoh: `/keys enter`, `/keys esc`, `/keys y`, `/keys n`).
 
 ### Pengelolaan workspace dan terminal

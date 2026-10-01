@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -10,6 +11,7 @@ type ActiveJob struct {
 	AgentName string
 	Prompt    string
 	StartTime time.Time
+	Cancel    context.CancelFunc
 }
 
 type SessionState struct {
@@ -51,7 +53,7 @@ func (s *SessionState) SetSelectedWorkspace(userID int64, wsID string) {
 	s.SelectedWorkspace[userID] = wsID
 }
 
-func (s *SessionState) AddJob(paneID, agentName, prompt string) {
+func (s *SessionState) AddJob(paneID, agentName, prompt string, cancel context.CancelFunc) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ActiveJobs[paneID] = &ActiveJob{
@@ -59,9 +61,22 @@ func (s *SessionState) AddJob(paneID, agentName, prompt string) {
 		AgentName: agentName,
 		Prompt:    prompt,
 		StartTime: time.Now(),
+		Cancel:    cancel,
 	}
 }
 
+func (s *SessionState) AbortJob(paneID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if job, ok := s.ActiveJobs[paneID]; ok {
+		if job.Cancel != nil {
+			job.Cancel()
+		}
+		delete(s.ActiveJobs, paneID)
+		return true
+	}
+	return false
+}
 func (s *SessionState) RemoveJob(paneID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -32,7 +32,7 @@ var (
 
 	BtnMenuWorkspaces = MainMenuMarkup.Text("📁 Workspaces")
 	BtnMenuShell      = MainMenuMarkup.Text("💻 Git Status")
-	BtnMenuStop       = MainMenuMarkup.Text("🛑 Stop (Ctrl+C)")
+	BtnMenuStop       = MainMenuMarkup.Text("🛑 Abort / Stop")
 
 	BtnMenuApprove    = MainMenuMarkup.Text("✅ Approve (Enter)")
 	BtnMenuReject     = MainMenuMarkup.Text("❌ Reject (n)")
@@ -93,7 +93,7 @@ func MakeAgentKeyboard(agents []herdr.Agent, currentPaneID string) *tele.ReplyMa
 // MakeWorkingKeyboard returns buttons shown while an agent is executing a prompt.
 func MakeWorkingKeyboard(paneID string) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
-	btnStop := menu.Data("🛑 Stop (Ctrl+C)", "act_key", paneID+"|ctrl+c")
+	btnStop := menu.Data("🛑 Abort / Stop", "act_key", paneID+"|abort")
 	btnRef := menu.Data("🔄 Refresh Status", "act_key", paneID+"|refresh")
 	menu.Inline(menu.Row(btnStop, btnRef))
 	return menu
@@ -104,7 +104,7 @@ func MakeBlockedKeyboard(paneID string) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	btnApprove := menu.Data("✅ Approve (Enter)", "act_key", paneID+"|enter")
 	btnReject := menu.Data("❌ Reject (n)", "act_key", paneID+"|n")
-	btnStop := menu.Data("🛑 Stop (Ctrl+C)", "act_key", paneID+"|ctrl+c")
+	btnStop := menu.Data("🛑 Abort / Stop", "act_key", paneID+"|abort")
 
 	menu.Inline(
 		menu.Row(btnApprove, btnReject),

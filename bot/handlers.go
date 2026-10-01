@@ -44,6 +44,7 @@ func NewBotServer(cfg *config.Config, client *herdr.Client) (*BotServer, error) 
 
 	// Set Telegram native Command Menu (≡ button next to text input)
 	_ = b.SetCommands([]tele.Command{
+		{Text: "abort", Description: "Hentikan/batalkan turn agent saat ini"},
 		{Text: "jobs", Description: "Pantau pekerjaan paralel yang sedang aktif"},
 		{Text: "broadcast", Description: "Kirim prompt ke semua agent sekaligus"},
 		{Text: "workspaces", Description: "Pilih workspace & kelola panel (panes)"},
@@ -95,6 +96,7 @@ func (s *BotServer) registerRoutes() {
 	s.bot.Handle("/sh", s.handleShell)
 	s.bot.Handle("/keys", s.handleKeys)
 	s.bot.Handle("/stop", s.handleStop)
+	s.bot.Handle("/abort", s.handleStop)
 	s.bot.Handle("/img", s.handleImage)
 	s.bot.Handle("/menu", s.handleMenu)
 	s.bot.Handle("/newworkspace", s.handleNewWorkspace)
@@ -347,11 +349,15 @@ func (s *BotServer) handleStop(c tele.Context) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := s.client.SendKeys(ctx, paneID, "ctrl+c")
-	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal mengirim Ctrl+C: %v", err))
+	s.state.AbortJob(paneID)
+	_ = s.client.AbortAgent(ctx, paneID)
+
+	name := paneID
+	if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
+		name = a.DisplayName()
 	}
-	return c.Reply(fmt.Sprintf("🛑 Terkirim `Ctrl+C` ke agent `[%s]`.", paneID), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+
+	return c.Reply(fmt.Sprintf("🛑 *Proses dihentikan (Aborted):*\n*%s*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func (s *BotServer) handleKeys(c tele.Context) error {
@@ -501,6 +507,17 @@ func (s *BotServer) onActionKey(c tele.Context) error {
 		return c.Respond(&tele.CallbackResponse{Text: "Status refreshed"})
 	}
 
+	if action == "abort" || action == "ctrl+c" {
+		s.state.AbortJob(paneID)
+		_ = s.client.AbortAgent(ctx, paneID)
+		_ = c.Respond(&tele.CallbackResponse{Text: "Agent dihentikan!"})
+		name := paneID
+		if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
+			name = a.DisplayName()
+		}
+		return c.Send(fmt.Sprintf("🛑 *Proses dihentikan (Aborted):*\n*%s*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	}
+
 	err := s.client.SendKeys(ctx, paneID, action)
 	if err != nil {
 		return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Gagal kirim: %v", err)})
@@ -513,7 +530,6 @@ func (s *BotServer) onActionKey(c tele.Context) error {
 	}
 	return c.Send(fmt.Sprintf("⌨️ Terkirim `%s` ke agent *%s*.", action, name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
-
 func (s *BotServer) handlePhoto(c tele.Context) error {
 	photo := c.Message().Photo
 	if photo == nil {

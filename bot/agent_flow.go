@@ -30,7 +30,7 @@ func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, s
 	}
 
 	if state != nil {
-		state.AddJob(paneID, agentName, prompt)
+		state.AddJob(paneID, agentName, prompt, cancel)
 		defer state.RemoveJob(paneID)
 	}
 	// Initial acknowledge message
@@ -66,11 +66,17 @@ func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, s
 	for {
 		select {
 		case <-ctx.Done():
-			_, _ = b.Edit(statusMsg, fmt.Sprintf("⏰ *Timeout*: Prompt execution di `[%s]` melebihi batas waktu 10 menit.", paneID), &tele.SendOptions{
-				ParseMode: tele.ModeMarkdown,
-			})
+			elapsed := time.Since(startTime).Truncate(time.Second)
+			if ctx.Err() == context.Canceled {
+				_, _ = b.Edit(statusMsg, fmt.Sprintf("🛑 *Proses Dihentikan (Aborted)!*\n*%s*\n\nDurasi sebelum dihentikan: `%s`", agentName, elapsed), &tele.SendOptions{
+					ParseMode: tele.ModeMarkdown,
+				})
+			} else {
+				_, _ = b.Edit(statusMsg, fmt.Sprintf("⏰ *Timeout*: Prompt execution di `[%s]` melebihi batas waktu 10 menit.", paneID), &tele.SendOptions{
+					ParseMode: tele.ModeMarkdown,
+				})
+			}
 			return
-
 		case <-ticker.C:
 			frame = (frame + 1) % len(spinners)
 			spin := spinners[frame]
