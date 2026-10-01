@@ -32,19 +32,19 @@ var (
 
 	BtnMenuWorkspaces = MainMenuMarkup.Text("📁 Workspaces")
 	BtnMenuShell      = MainMenuMarkup.Text("💻 Git Status")
-	BtnMenuStop       = MainMenuMarkup.Text("🛑 Abort / Stop")
+	BtnMenuAbort      = MainMenuMarkup.Text("🛑 Abort Turn")
 
 	BtnMenuApprove    = MainMenuMarkup.Text("✅ Approve (Enter)")
 	BtnMenuReject     = MainMenuMarkup.Text("❌ Reject (n)")
-	BtnMenuHelp       = MainMenuMarkup.Text("ℹ️ Help")
+	BtnMenuCtrlC      = MainMenuMarkup.Text("⚡ Ctrl+C")
 )
 
 // BuildMainMenu builds and returns the persistent bottom keyboard.
 func BuildMainMenu() *tele.ReplyMarkup {
 	MainMenuMarkup.Reply(
 		MainMenuMarkup.Row(BtnMenuAgents, BtnMenuStatus, BtnMenuRead),
-		MainMenuMarkup.Row(BtnMenuWorkspaces, BtnMenuShell, BtnMenuStop),
-		MainMenuMarkup.Row(BtnMenuApprove, BtnMenuReject, BtnMenuHelp),
+		MainMenuMarkup.Row(BtnMenuWorkspaces, BtnMenuShell, BtnMenuAbort),
+		MainMenuMarkup.Row(BtnMenuApprove, BtnMenuReject, BtnMenuCtrlC),
 	)
 	return MainMenuMarkup
 }
@@ -93,9 +93,13 @@ func MakeAgentKeyboard(agents []herdr.Agent, currentPaneID string) *tele.ReplyMa
 // MakeWorkingKeyboard returns buttons shown while an agent is executing a prompt.
 func MakeWorkingKeyboard(paneID string) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
-	btnStop := menu.Data("🛑 Abort / Stop", "act_key", paneID+"|abort")
+	btnAbort := menu.Data("🛑 Abort Turn", "act_key", paneID+"|abort")
+	btnCtrlC := menu.Data("⚡ Ctrl+C", "act_key", paneID+"|ctrl+c")
 	btnRef := menu.Data("🔄 Refresh Status", "act_key", paneID+"|refresh")
-	menu.Inline(menu.Row(btnStop, btnRef))
+	menu.Inline(
+		menu.Row(btnAbort, btnCtrlC),
+		menu.Row(btnRef),
+	)
 	return menu
 }
 
@@ -104,11 +108,12 @@ func MakeBlockedKeyboard(paneID string) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	btnApprove := menu.Data("✅ Approve (Enter)", "act_key", paneID+"|enter")
 	btnReject := menu.Data("❌ Reject (n)", "act_key", paneID+"|n")
-	btnStop := menu.Data("🛑 Abort / Stop", "act_key", paneID+"|abort")
+	btnAbort := menu.Data("🛑 Abort Turn", "act_key", paneID+"|abort")
+	btnCtrlC := menu.Data("⚡ Ctrl+C", "act_key", paneID+"|ctrl+c")
 
 	menu.Inline(
 		menu.Row(btnApprove, btnReject),
-		menu.Row(btnStop),
+		menu.Row(btnAbort, btnCtrlC),
 	)
 	return menu
 }

@@ -230,14 +230,19 @@ func (c *Client) CloseWorkspace(ctx context.Context, workspaceID string) error {
 	return err
 }
 
-// AbortAgent sends Escape and Ctrl+C to both the agent and pane to forcefully abort an active turn.
-func (c *Client) AbortAgent(ctx context.Context, target string) error {
-	// 1. Send esc to agent (cancels LLM generation in OMP, Claude Code, Pi)
-	_ = c.SendKeys(ctx, target, "esc")
-	// 2. Send ctrl+c to agent
+// AbortTurn cancels only the active LLM generation/turn while keeping the agent process alive.
+// In OMP, Claude Code, and Pi, Escape is the standard key to cancel a turn.
+func (c *Client) AbortTurn(ctx context.Context, target string) error {
+	err := c.SendKeys(ctx, target, "esc")
+	if err != nil {
+		_, err = c.execCommand(ctx, "pane", "send-keys", target, "esc")
+	}
+	return err
+}
+
+// SendInterrupt sends Ctrl+C (SIGINT) to the agent and pane terminal.
+func (c *Client) SendInterrupt(ctx context.Context, target string) error {
 	_ = c.SendKeys(ctx, target, "ctrl+c")
-	// 3. Also send esc and ctrl+c to pane PTY directly
-	_, _ = c.execCommand(ctx, "pane", "send-keys", target, "esc")
-	_, _ = c.execCommand(ctx, "pane", "send-keys", target, "ctrl+c")
-	return nil
+	_, err := c.execCommand(ctx, "pane", "send-keys", target, "ctrl+c")
+	return err
 }

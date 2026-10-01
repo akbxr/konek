@@ -44,7 +44,9 @@ func NewBotServer(cfg *config.Config, client *herdr.Client) (*BotServer, error) 
 
 	// Set Telegram native Command Menu (≡ button next to text input)
 	_ = b.SetCommands([]tele.Command{
-		{Text: "abort", Description: "Abort the running turn or process"},
+		{Text: "abort", Description: "Abort active turn via Escape (keeps agent alive)"},
+		{Text: "ctrlc", Description: "Send Ctrl+C (SIGINT) to pane or process"},
+		{Text: "stop", Description: "Send Ctrl+C (SIGINT) to pane or process"},
 		{Text: "jobs", Description: "Monitor parallel running agents"},
 		{Text: "broadcast", Description: "Send prompt to all active agents simultaneously"},
 		{Text: "workspaces", Description: "Browse workspaces and panes"},
@@ -54,7 +56,6 @@ func NewBotServer(cfg *config.Config, client *herdr.Client) (*BotServer, error) 
 		{Text: "status", Description: "Check detailed agent status"},
 		{Text: "read", Description: "Read full response or terminal logs"},
 		{Text: "sh", Description: "Run a shell command on host (e.g. /sh git status)"},
-		{Text: "stop", Description: "Abort running turn or process"},
 		{Text: "img", Description: "Send image from host to Telegram"},
 		{Text: "menu", Description: "Show bottom quick menu"},
 	})
@@ -95,8 +96,9 @@ func (s *BotServer) registerRoutes() {
 	s.bot.Handle("/read", s.handleRead)
 	s.bot.Handle("/sh", s.handleShell)
 	s.bot.Handle("/keys", s.handleKeys)
-	s.bot.Handle("/stop", s.handleStop)
-	s.bot.Handle("/abort", s.handleStop)
+	s.bot.Handle("/abort", s.handleAbort)
+	s.bot.Handle("/stop", s.handleInterrupt)
+	s.bot.Handle("/ctrlc", s.handleInterrupt)
 	s.bot.Handle("/img", s.handleImage)
 	s.bot.Handle("/menu", s.handleMenu)
 	s.bot.Handle("/newworkspace", s.handleNewWorkspace)
@@ -117,10 +119,10 @@ func (s *BotServer) registerRoutes() {
 	s.bot.Handle(&BtnMenuRead, s.handleRead)
 	s.bot.Handle(&BtnMenuWorkspaces, s.handleWorkspaces)
 	s.bot.Handle(&BtnMenuShell, s.handleMenuGitStatus)
-	s.bot.Handle(&BtnMenuStop, s.handleStop)
+	s.bot.Handle(&BtnMenuAbort, s.handleAbort)
+	s.bot.Handle(&BtnMenuCtrlC, s.handleInterrupt)
 	s.bot.Handle(&BtnMenuApprove, s.handleMenuApprove)
 	s.bot.Handle(&BtnMenuReject, s.handleMenuReject)
-	s.bot.Handle(&BtnMenuHelp, s.handleStart)
 
 	// 5. Message Handlers (Text, Photo, Document)
 	s.bot.Handle(tele.OnText, s.handleTextMessage)
@@ -346,7 +348,7 @@ func (s *BotServer) handleShell(c tele.Context) error {
 	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
-func (s *BotServer) handleStop(c tele.Context) error {
+func (s *BotServer) handleAbort(c tele.Context) error {
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
 		return c.Reply("⚠️ No agent selected.")
@@ -355,16 +357,33 @@ func (s *BotServer) handleStop(c tele.Context) error {
 	defer cancel()
 
 	s.state.AbortJob(paneID)
-	_ = s.client.AbortAgent(ctx, paneID)
+	_ = s.client.AbortTurn(ctx, paneID)
 
 	name := paneID
 	if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
 		name = a.DisplayName()
 	}
 
-	return c.Reply(fmt.Sprintf("🛑 *Process aborted:*\n*%s*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Reply(fmt.Sprintf("🛑 *Turn aborted:* Sent `Escape` to *%s*. Agent is kept alive at the prompt.", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
+func (s *BotServer) handleInterrupt(c tele.Context) error {
+	paneID := s.state.GetSelectedAgent(c.Sender().ID)
+	if paneID == "" {
+		return c.Reply("⚠️ No agent selected.")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_ = s.client.SendInterrupt(ctx, paneID)
+
+	name := paneID
+	if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
+		name = a.DisplayName()
+	}
+
+	return c.Reply(fmt.Sprintf("⚡ *Sent Ctrl+C (SIGINT)* to *%s*.", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+}
 func (s *BotServer) handleKeys(c tele.Context) error {
 	args := c.Args()
 	if len(args) == 0 {
@@ -512,15 +531,25 @@ func (s *BotServer) onActionKey(c tele.Context) error {
 		return c.Respond(&tele.CallbackResponse{Text: "Status refreshed"})
 	}
 
-	if action == "abort" || action == "ctrl+c" {
+	if action == "abort" {
 		s.state.AbortJob(paneID)
-		_ = s.client.AbortAgent(ctx, paneID)
-		_ = c.Respond(&tele.CallbackResponse{Text: "Agent aborted!"})
+		_ = s.client.AbortTurn(ctx, paneID)
+		_ = c.Respond(&tele.CallbackResponse{Text: "Turn aborted (Escape sent)"})
 		name := paneID
 		if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
 			name = a.DisplayName()
 		}
-		return c.Send(fmt.Sprintf("🛑 *Process aborted:*\n*%s*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		return c.Send(fmt.Sprintf("🛑 *Turn aborted:* Sent `Escape` to *%s*. Process is kept alive.", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	}
+
+	if action == "ctrl+c" {
+		_ = s.client.SendInterrupt(ctx, paneID)
+		_ = c.Respond(&tele.CallbackResponse{Text: "Sent Ctrl+C"})
+		name := paneID
+		if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
+			name = a.DisplayName()
+		}
+		return c.Send(fmt.Sprintf("⚡ *Sent Ctrl+C (SIGINT)* to *%s*.", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
 	err := s.client.SendKeys(ctx, paneID, action)

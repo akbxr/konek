@@ -65,7 +65,8 @@ Send `/start` in Telegram to initialize the navigation keyboard.
 - `/agents`. Opens an inline menu to inspect and select active coding agents.
 - `/status`. Displays active agent details (project name, harness, lifecycle state, working directory).
 - `/read [N]`. Without arguments, reads the complete latest response from the transcript. With an integer argument (e.g. `/read 50`), reads N lines from the active terminal scrollback.
-- `/abort` or `/stop`. Immediately interrupts the active turn or running process using Escape and Ctrl+C.
+- `/abort`. Cancels only the active turn using Escape, keeping the agent process alive at the prompt.
+- `/stop` or `/ctrlc`. Sends Ctrl+C (SIGINT) to the terminal pane to interrupt running shell processes or exit.
 - `/keys <key>`. Sends specific control keys to the agent terminal (e.g. `/keys enter`, `/keys esc`, `/keys y`, `/keys n`).
 
 ### Managing workspaces and panes
