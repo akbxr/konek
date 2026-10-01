@@ -44,19 +44,19 @@ func NewBotServer(cfg *config.Config, client *herdr.Client) (*BotServer, error) 
 
 	// Set Telegram native Command Menu (≡ button next to text input)
 	_ = b.SetCommands([]tele.Command{
-		{Text: "abort", Description: "Hentikan/batalkan turn agent saat ini"},
-		{Text: "jobs", Description: "Pantau pekerjaan paralel yang sedang aktif"},
-		{Text: "broadcast", Description: "Kirim prompt ke semua agent sekaligus"},
-		{Text: "workspaces", Description: "Pilih workspace & kelola panel (panes)"},
-		{Text: "newworkspace", Description: "Buat workspace baru: /newworkspace <nama>"},
-		{Text: "split", Description: "Bagi (split) panel aktif"},
-		{Text: "agents", Description: "Pilih / ganti coding agent aktif"},
-		{Text: "status", Description: "Cek status detail agent saat ini"},
-		{Text: "read", Description: "Baca jawaban lengkap / log terminal"},
-		{Text: "sh", Description: "Jalankan shell command (misal: /sh git status)"},
-		{Text: "stop", Description: "Hentikan proses yang berjalan (Ctrl+C)"},
-		{Text: "img", Description: "Kirim gambar dari project ke Telegram"},
-		{Text: "menu", Description: "Tampilkan menu tombol bawah"},
+		{Text: "abort", Description: "Abort the running turn or process"},
+		{Text: "jobs", Description: "Monitor parallel running agents"},
+		{Text: "broadcast", Description: "Send prompt to all active agents simultaneously"},
+		{Text: "workspaces", Description: "Browse workspaces and panes"},
+		{Text: "newworkspace", Description: "Create a new workspace: /newworkspace <name>"},
+		{Text: "split", Description: "Split active terminal pane"},
+		{Text: "agents", Description: "Choose or switch active coding agent"},
+		{Text: "status", Description: "Check detailed agent status"},
+		{Text: "read", Description: "Read full response or terminal logs"},
+		{Text: "sh", Description: "Run a shell command on host (e.g. /sh git status)"},
+		{Text: "stop", Description: "Abort running turn or process"},
+		{Text: "img", Description: "Send image from host to Telegram"},
+		{Text: "menu", Description: "Show bottom quick menu"},
 	})
 
 	srv.registerRoutes()
@@ -78,7 +78,7 @@ func (s *BotServer) registerRoutes() {
 			sender := c.Sender()
 			if sender == nil || !s.cfg.AllowedUserIDs[sender.ID] {
 				if sender != nil {
-					_ = c.Reply(fmt.Sprintf("⛔ Akses ditolak. User ID Anda (%d) belum terdaftar di whitelist konek.", sender.ID))
+					_ = c.Reply(fmt.Sprintf("⛔ Access denied. Your User ID (%d) is not in the whitelist.", sender.ID))
 				}
 				return nil
 			}
@@ -131,7 +131,7 @@ func (s *BotServer) handleStart(c tele.Context) error {
 	host, _ := os.Hostname()
 	currentPane := s.state.GetSelectedAgent(c.Sender().ID)
 
-	selectedText := "Belum dipilih (ketik /agents)"
+	selectedText := "None selected (type /agents)"
 	if currentPane != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		if a, err := s.client.GetAgent(ctx, currentPane); err == nil {
@@ -143,20 +143,26 @@ func (s *BotServer) handleStart(c tele.Context) error {
 	}
 
 	msg := fmt.Sprintf(
-		"👋 *Halo! Konek Telegram Bot aktif.*\n\n" +
+		"👋 *Konek is running.*\n\n" +
 			"💻 Host: `%s`\n" +
 			"🎯 Active Agent: %s\n\n" +
-			"*Daftar Perintah:*\n" +
-			"• Kirim pesan teks ➜ prompt ke agent aktif\n" +
-			"• Kirim foto/screenshot ➜ dikirim ke agent aktif untuk dianalisis\n" +
-			"• `/img <path>` ➜ Kirim gambar dari project ke Telegram\n" +
-			"• `/agents` ➜ Lihat dan pilih agent OMP/coding yang aktif\n" +
-			"• `/status` ➜ Cek status detail agent yang dipilih\n" +
-			"• `/read [N]` ➜ Baca jawaban lengkap atau log terminal\n" +
-			"• `/workspaces` ➜ Daftar workspace di Herdr\n" +
-			"• `/sh <cmd>` ➜ Jalankan shell command langsung di host\n" +
-			"• `/stop` ➜ Kirim Ctrl+C untuk membatalkan turn\n" +
-			"• `/keys <key>` ➜ Kirim tombol (misal: `enter`, `esc`, `ctrl+c`)\n",
+			"*Commands:*\n" +
+			"• Send plain text ➜ Prompt active agent\n" +
+			"• `@name <prompt>` ➜ Prompt specific agent directly\n" +
+			"• Send photo/screenshot ➜ Sent to multimodal agent\n" +
+			"• `/img <path>` ➜ Fetch image from project to Telegram\n" +
+			"• `/jobs` ➜ Monitor parallel running tasks\n" +
+			"• `/broadcast <prompt>` ➜ Send prompt to all active agents\n" +
+			"• `/agents` ➜ List and select active agents\n" +
+			"• `/workspaces` ➜ Browse workspaces and panes\n" +
+			"• `/newworkspace <name>` ➜ Create new project workspace\n" +
+			"• `/split [right|down]` ➜ Split terminal pane\n" +
+			"• `/status` ➜ Show active agent details\n" +
+			"• `/read [N]` ➜ Read full response or N terminal lines\n" +
+			"• `/sh <cmd>` ➜ Run shell command on host\n" +
+			"• `/abort` or `/stop` ➜ Abort current turn immediately\n" +
+			"• `/keys <key>` ➜ Send control key (e.g. enter, esc, ctrl+c)\n" +
+			"• `/menu` ➜ Show quick navigation menu\n",
 		host, selectedText,
 	)
 
@@ -172,11 +178,11 @@ func (s *BotServer) handleAgents(c tele.Context) error {
 
 	agents, err := s.client.ListAgents(ctx)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal mengambil daftar agent dari Herdr: %v", err))
+		return c.Reply(fmt.Sprintf("❌ Failed to fetch agent list from Herdr: %v", err))
 	}
 
 	if len(agents) == 0 {
-		return c.Reply("ℹ️ Tidak ada agent yang sedang berjalan di Herdr.\nJalankan session omp di herdr terlebih dahulu.")
+		return c.Reply("ℹ️ No agents currently running in Herdr.\nStart an agent session in Herdr first.")
 	}
 
 	currentPane := s.state.GetSelectedAgent(c.Sender().ID)
@@ -186,7 +192,7 @@ func (s *BotServer) handleAgents(c tele.Context) error {
 	}
 
 	kb := MakeAgentKeyboard(agents, currentPane)
-	return c.Send("📋 *Pilih agent yang ingin Anda kendalikan:*", &tele.SendOptions{
+	return c.Send("📋 *Select an agent to control:*", &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
@@ -198,17 +204,17 @@ func (s *BotServer) handleWorkspaces(c tele.Context) error {
 
 	workspaces, err := s.client.ListWorkspaces(ctx)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal mengambil daftar workspace: %v", err))
+		return c.Reply(fmt.Sprintf("❌ Failed to fetch workspace list: %v", err))
 	}
 
 	if len(workspaces) == 0 {
-		return c.Reply("ℹ️ Belum ada workspace di Herdr. Buat dengan `/newworkspace <nama>`.")
+		return c.Reply("ℹ️ No workspaces in Herdr yet. Create one with `/newworkspace <name>`.")
 	}
 
 	currentWs := s.state.GetSelectedWorkspace(c.Sender().ID)
 	kb := MakeWorkspaceKeyboard(workspaces, currentWs)
 
-	return c.Send("📂 *Pilih Workspace Herdr:*\nKlik salah satu workspace untuk mengelola panel (pane) di dalamnya:", &tele.SendOptions{
+	return c.Send("📂 *Select Herdr Workspace:*\nClick a workspace to view and manage its panes:", &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
@@ -217,7 +223,7 @@ func (s *BotServer) handleWorkspaces(c tele.Context) error {
 func (s *BotServer) handleStatus(c tele.Context) error {
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
-		return c.Reply("⚠️ Belum ada agent yang dipilih. Gunakan `/agents` untuk memilih.")
+		return c.Reply("⚠️ No agent selected. Use `/agents` to select one.")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -225,7 +231,7 @@ func (s *BotServer) handleStatus(c tele.Context) error {
 
 	agent, err := s.client.GetAgent(ctx, paneID)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal mendapatkan status agent `[%s]`: %v", paneID, err))
+		return c.Reply(fmt.Sprintf("❌ Failed to get agent status for `[%s]`: %v", paneID, err))
 	}
 
 	msg := fmt.Sprintf(
@@ -233,7 +239,7 @@ func (s *BotServer) handleStatus(c tele.Context) error {
 			"• Title: *%s*\n" +
 			"• Status: `%s`\n" +
 			"• Project / CWD: `%s`\n" +
-			"• Engine: `%s`\n" +
+			"• Harness: `%s`\n" +
 			"• Internal Pane: `%s`\n",
 		agent.DisplayName(), agent.AgentStatus, agent.Cwd, agent.Agent, agent.PaneID,
 	)
@@ -243,7 +249,7 @@ func (s *BotServer) handleStatus(c tele.Context) error {
 func (s *BotServer) handleRead(c tele.Context) error {
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
-		return c.Reply("⚠️ Belum ada agent yang dipilih. Gunakan `/agents` untuk memilih.")
+		return c.Reply("⚠️ No agent selected. Use `/agents` to select one.")
 	}
 
 	args := c.Args()
@@ -261,7 +267,7 @@ func (s *BotServer) handleRead(c tele.Context) error {
 	if len(args) == 0 && agent != nil && agent.AgentSession != nil && agent.AgentSession.Kind == "path" {
 		assistantText, _ := herdr.ReadLatestAssistantMessage(agent.AgentSession.Value, 0)
 		if assistantText != "" {
-			_ = c.Send(fmt.Sprintf("💬 *Jawaban Terakhir (%s):*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+			_ = c.Send(fmt.Sprintf("💬 *Latest Response (%s):*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 			return SendSafeResponse(s.bot, c.Recipient(), assistantText)
 		}
 	}
@@ -275,23 +281,23 @@ func (s *BotServer) handleRead(c tele.Context) error {
 
 	output, err := s.client.ReadAgent(ctx, paneID, lines)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal membaca output: %v", err))
+		return c.Reply(fmt.Sprintf("❌ Failed to read output: %v", err))
 	}
 
 	cleanOutput := CleanTerminalChrome(output)
 	cleanOutput = getTailLines(cleanOutput, lines)
 	if cleanOutput == "" {
-		cleanOutput = "(terminal kosong)"
+		cleanOutput = "(terminal empty)"
 	}
 
-	msg := fmt.Sprintf("📺 *Terminal Output (%s)* — %d baris:\n```\n%s\n```", name, lines, cleanOutput)
+	msg := fmt.Sprintf("📺 *Terminal Output (%s)*, %d lines:\n```\n%s\n```", name, lines, cleanOutput)
 	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func (s *BotServer) handleShell(c tele.Context) error {
 	cmdText := strings.TrimSpace(strings.TrimPrefix(c.Text(), "/sh"))
 	if cmdText == "" {
-		return c.Reply("ℹ️ Penggunaan: `/sh <command>`\nContoh: `/sh git status` atau `/sh df -h`")
+		return c.Reply("ℹ️ Usage: `/sh <command>`\nExample: `/sh git status` or `/sh df -h`")
 	}
 
 	workDir := s.cfg.DefaultCwd
@@ -324,11 +330,11 @@ func (s *BotServer) handleShell(c tele.Context) error {
 
 	output = strings.TrimSpace(output)
 	if output == "" {
-		output = "(perintah selesai tanpa output)"
+		output = "(command finished with no output)"
 	}
 
 	if len(output) > 3500 {
-		output = output[len(output)-3500:] + "\n...(dipotong karena melebihi batas)"
+		output = output[len(output)-3500:] + "\n...(truncated due to message length limit)"
 	}
 
 	statusEmoji := "✅"
@@ -343,9 +349,8 @@ func (s *BotServer) handleShell(c tele.Context) error {
 func (s *BotServer) handleStop(c tele.Context) error {
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
-		return c.Reply("⚠️ Belum ada agent yang dipilih.")
+		return c.Reply("⚠️ No agent selected.")
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -357,18 +362,18 @@ func (s *BotServer) handleStop(c tele.Context) error {
 		name = a.DisplayName()
 	}
 
-	return c.Reply(fmt.Sprintf("🛑 *Proses dihentikan (Aborted):*\n*%s*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Reply(fmt.Sprintf("🛑 *Process aborted:*\n*%s*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func (s *BotServer) handleKeys(c tele.Context) error {
 	args := c.Args()
 	if len(args) == 0 {
-		return c.Reply("ℹ️ Penggunaan: `/keys <key>`\nContoh: `/keys enter`, `/keys esc`, `/keys ctrl+c`, `/keys y`")
+		return c.Reply("ℹ️ Usage: `/keys <key>`\nExample: `/keys enter`, `/keys esc`, `/keys ctrl+c`, `/keys y`")
 	}
 
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
-		return c.Reply("⚠️ Belum ada agent yang dipilih.")
+		return c.Reply("⚠️ No agent selected.")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -376,9 +381,9 @@ func (s *BotServer) handleKeys(c tele.Context) error {
 
 	err := s.client.SendKeys(ctx, paneID, args...)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal mengirim keys: %v", err))
+		return c.Reply(fmt.Sprintf("❌ Failed to send keys: %v", err))
 	}
-	return c.Reply(fmt.Sprintf("⌨️ Terkirim `%s` ke agent `[%s]`.", strings.Join(args, " "), paneID), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Reply(fmt.Sprintf("⌨️ Sent `%s` to agent `[%s]`.", strings.Join(args, " "), paneID), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func (s *BotServer) handleTextMessage(c tele.Context) error {
@@ -451,11 +456,11 @@ func (s *BotServer) onSelectAgent(c tele.Context) error {
 		displayName = a.DisplayName()
 	}
 
-	_ = c.Edit(fmt.Sprintf("🎯 *Agent aktif diubah ke:*\n*%s*\n\nSilakan ketik prompt instruksi Anda langsung!", displayName), &tele.SendOptions{
+	_ = c.Edit(fmt.Sprintf("🎯 *Active agent set to:*\n*%s*\n\nYou can now type prompts directly!", displayName), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
-	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Dipilih: %s", displayName)})
+	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Selected: %s", displayName)})
 }
 
 func (s *BotServer) onRefreshAgents(c tele.Context) error {
@@ -464,16 +469,16 @@ func (s *BotServer) onRefreshAgents(c tele.Context) error {
 
 	agents, err := s.client.ListAgents(ctx)
 	if err != nil {
-		return c.Respond(&tele.CallbackResponse{Text: "Gagal refresh agent"})
+		return c.Respond(&tele.CallbackResponse{Text: "Failed to refresh agents"})
 	}
 
 	currentPane := s.state.GetSelectedAgent(c.Sender().ID)
 	kb := MakeAgentKeyboard(agents, currentPane)
-	_ = c.Edit("📋 *Pilih agent yang ingin Anda kendalikan:*", &tele.SendOptions{
+	_ = c.Edit("📋 *Select an agent to control:*", &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
-	return c.Respond(&tele.CallbackResponse{Text: "Agent list diperbarui"})
+	return c.Respond(&tele.CallbackResponse{Text: "Agent list refreshed"})
 }
 
 func (s *BotServer) onActionKey(c tele.Context) error {
@@ -510,17 +515,17 @@ func (s *BotServer) onActionKey(c tele.Context) error {
 	if action == "abort" || action == "ctrl+c" {
 		s.state.AbortJob(paneID)
 		_ = s.client.AbortAgent(ctx, paneID)
-		_ = c.Respond(&tele.CallbackResponse{Text: "Agent dihentikan!"})
+		_ = c.Respond(&tele.CallbackResponse{Text: "Agent aborted!"})
 		name := paneID
 		if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
 			name = a.DisplayName()
 		}
-		return c.Send(fmt.Sprintf("🛑 *Proses dihentikan (Aborted):*\n*%s*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		return c.Send(fmt.Sprintf("🛑 *Process aborted:*\n*%s*", name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
 	err := s.client.SendKeys(ctx, paneID, action)
 	if err != nil {
-		return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Gagal kirim: %v", err)})
+		return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Failed to send: %v", err)})
 	}
 
 	_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Sent '%s'", action)})
@@ -528,7 +533,7 @@ func (s *BotServer) onActionKey(c tele.Context) error {
 	if a, err := s.client.GetAgent(ctx, paneID); err == nil {
 		name = a.DisplayName()
 	}
-	return c.Send(fmt.Sprintf("⌨️ Terkirim `%s` ke agent *%s*.", action, name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Send(fmt.Sprintf("⌨️ Sent `%s` to agent *%s*.", action, name), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 func (s *BotServer) handlePhoto(c tele.Context) error {
 	photo := c.Message().Photo
@@ -549,12 +554,12 @@ func (s *BotServer) handlePhoto(c tele.Context) error {
 
 	err := s.bot.Download(&photo.File, localPath)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal mendownload gambar: %v", err))
+		return c.Reply(fmt.Sprintf("❌ Failed to download image: %v", err))
 	}
 
 	caption := strings.TrimSpace(c.Message().Caption)
 	if caption == "" {
-		caption = "Tolong periksa dan analisis gambar terlampir ini."
+		caption = "Please inspect and analyze this attached image."
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -565,7 +570,7 @@ func (s *BotServer) handlePhoto(c tele.Context) error {
 	if agent != nil && (agent.Agent == "omp" || agent.Agent == "pi") {
 		prompt = fmt.Sprintf("@%s %s", localPath, caption)
 	} else {
-		prompt = fmt.Sprintf("Periksa gambar di: %s\n\n%s", localPath, caption)
+		prompt = fmt.Sprintf("Inspect image at: %s\n\n%s", localPath, caption)
 	}
 
 	go HandlePromptSubmission(s.bot, c, s.client, s.state, paneID, prompt)
@@ -594,12 +599,12 @@ func (s *BotServer) handleDocument(c tele.Context) error {
 
 	err := s.bot.Download(&doc.File, localPath)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal mendownload file: %v", err))
+		return c.Reply(fmt.Sprintf("❌ Failed to download file: %v", err))
 	}
 
 	caption := strings.TrimSpace(c.Message().Caption)
 	if caption == "" {
-		caption = fmt.Sprintf("Tolong periksa file terlampir: %s", cleanFileName)
+		caption = fmt.Sprintf("Please inspect this attached file: %s", cleanFileName)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -610,7 +615,7 @@ func (s *BotServer) handleDocument(c tele.Context) error {
 	if agent != nil && (agent.Agent == "omp" || agent.Agent == "pi") {
 		prompt = fmt.Sprintf("@%s %s", localPath, caption)
 	} else {
-		prompt = fmt.Sprintf("Periksa file di: %s\n\n%s", localPath, caption)
+		prompt = fmt.Sprintf("Inspect file at: %s\n\n%s", localPath, caption)
 	}
 
 	go HandlePromptSubmission(s.bot, c, s.client, s.state, paneID, prompt)
@@ -620,7 +625,7 @@ func (s *BotServer) handleDocument(c tele.Context) error {
 func (s *BotServer) handleImage(c tele.Context) error {
 	imgPath := strings.TrimSpace(strings.TrimPrefix(c.Text(), "/img"))
 	if imgPath == "" {
-		return c.Reply("ℹ️ Penggunaan: `/img <path_gambar>`\nContoh: `/img screenshot.png` atau `/img public/logo.png`")
+		return c.Reply("ℹ️ Usage: `/img <image_path>`\nExample: `/img screenshot.png` or `/img public/logo.png`")
 	}
 
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
@@ -640,12 +645,11 @@ func (s *BotServer) handleImage(c tele.Context) error {
 
 	info, err := os.Stat(fullPath)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ File tidak ditemukan:\n`%s`", fullPath))
+		return c.Reply(fmt.Sprintf("❌ File not found:\n`%s`", fullPath))
 	}
 	if info.IsDir() {
-		return c.Reply(fmt.Sprintf("❌ Path adalah direktori, bukan file:\n`%s`", fullPath))
+		return c.Reply(fmt.Sprintf("❌ Path is a directory, not a file:\n`%s`", fullPath))
 	}
-
 	photo := &tele.Photo{
 		File:    tele.FromDisk(fullPath),
 		Caption: fmt.Sprintf("🖼️ `%s`", filepath.Base(fullPath)),
@@ -655,7 +659,7 @@ func (s *BotServer) handleImage(c tele.Context) error {
 }
 
 func (s *BotServer) handleMenu(c tele.Context) error {
-	return c.Send("🔘 *Menu Navigasi Aktif.* Silakan gunakan tombol di bawah:", &tele.SendOptions{
+	return c.Send("🔘 *Navigation Menu Active.* Use the buttons below:", &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: BuildMainMenu(),
 	})
@@ -697,23 +701,23 @@ func (s *BotServer) handleMenuGitStatus(c tele.Context) error {
 func (s *BotServer) handleMenuApprove(c tele.Context) error {
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
-		return c.Reply("⚠️ Belum ada agent yang dipilih.")
+		return c.Reply("⚠️ No agent selected.")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = s.client.SendKeys(ctx, paneID, "enter")
-	return c.Send("✅ *Approved!* Mengirim tombol `Enter` ke agent.", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Send("✅ *Approved.* Sent `Enter` to agent.", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func (s *BotServer) handleMenuReject(c tele.Context) error {
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
-		return c.Reply("⚠️ Belum ada agent yang dipilih.")
+		return c.Reply("⚠️ No agent selected.")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = s.client.SendKeys(ctx, paneID, "n")
-	return c.Send("❌ *Rejected!* Mengirim tombol `n` ke agent.", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Send("❌ *Rejected.* Sent `n` to agent.", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func (s *BotServer) onSelectWorkspace(c tele.Context) error {
@@ -729,18 +733,18 @@ func (s *BotServer) onSelectWorkspace(c tele.Context) error {
 
 	panes, err := s.client.ListPanes(ctx, wsID)
 	if err != nil {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Gagal memuat panes"})
+		_ = c.Respond(&tele.CallbackResponse{Text: "Failed to load panes"})
 		return nil
 	}
 
 	currentPane := s.state.GetSelectedAgent(c.Sender().ID)
 	kb := MakePaneKeyboard(wsID, panes, currentPane)
 
-	_ = c.Edit(fmt.Sprintf("📂 *Workspace [%s]*\nPilih panel (pane) untuk dikontrol atau dioperasikan:", wsID), &tele.SendOptions{
+	_ = c.Edit(fmt.Sprintf("📂 *Workspace [%s]*\nSelect a pane to control or inspect:", wsID), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
-	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Workspace %s dipilih", wsID)})
+	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Workspace %s selected", wsID)})
 }
 
 func (s *BotServer) onRefreshWorkspaces(c tele.Context) error {
@@ -749,13 +753,13 @@ func (s *BotServer) onRefreshWorkspaces(c tele.Context) error {
 
 	workspaces, err := s.client.ListWorkspaces(ctx)
 	if err != nil {
-		return c.Respond(&tele.CallbackResponse{Text: "Gagal refresh"})
+		return c.Respond(&tele.CallbackResponse{Text: "Failed to refresh"})
 	}
 
 	currentWs := s.state.GetSelectedWorkspace(c.Sender().ID)
 	kb := MakeWorkspaceKeyboard(workspaces, currentWs)
 
-	_ = c.Edit("📂 *Pilih Workspace Herdr:*\nKlik salah satu workspace untuk mengelola panel (pane) di dalamnya:", &tele.SendOptions{
+	_ = c.Edit("📂 *Select Herdr Workspace:*\nClick a workspace to view and manage its panes:", &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
@@ -782,19 +786,19 @@ func (s *BotServer) onSelectPane(c tele.Context) error {
 	panes, _ := s.client.ListPanes(ctx, wsID)
 	kb := MakePaneKeyboard(wsID, panes, paneID)
 
-	_ = c.Edit(fmt.Sprintf("🎯 *Panel aktif diubah ke:*\n*%s*\n\nAnda sekarang dapat mengirim prompt teks langsung ke panel ini!", name), &tele.SendOptions{
+	_ = c.Edit(fmt.Sprintf("🎯 *Active pane set to:*\n*%s*\n\nYou can now send prompts or shell commands directly!", name), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
-	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Panel %s aktif", paneID)})
+	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Pane %s active", paneID)})
 }
 
 func (s *BotServer) onActionWorkspace(c tele.Context) error {
 	data := strings.TrimSpace(c.Data())
 
 	if data == "new" {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Ketik /newworkspace"})
-		return c.Send("➕ *Buat Workspace Baru*\n\nKetik perintah:\n`/newworkspace <nama_project> [direktori_opsional]`\n\nContoh:\n`/newworkspace backend`\n`/newworkspace my-app /Users/akbar/Code/projects/my-app`", &tele.SendOptions{
+		_ = c.Respond(&tele.CallbackResponse{Text: "Type /newworkspace"})
+		return c.Send("➕ *Create New Workspace*\n\nRun command:\n`/newworkspace <project_name> [optional_directory]`\n\nExample:\n`/newworkspace backend`\n`/newworkspace my-app /Users/akbar/Code/projects/my-app`", &tele.SendOptions{
 			ParseMode: tele.ModeMarkdown,
 		})
 	}
@@ -806,15 +810,15 @@ func (s *BotServer) onActionWorkspace(c tele.Context) error {
 
 		newPane, err := s.client.SplitPane(ctx, paneID, "right")
 		if err != nil {
-			_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Gagal split: %v", err)})
+			_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Failed to split: %v", err)})
 			return nil
 		}
 
-		_ = c.Respond(&tele.CallbackResponse{Text: "Panel baru dibuat!"})
+		_ = c.Respond(&tele.CallbackResponse{Text: "New pane created!"})
 		s.state.SetSelectedAgent(c.Sender().ID, newPane.PaneID)
 
 		kb := MakeStartAgentKeyboard(newPane.PaneID)
-		return c.Send(fmt.Sprintf("✂️ *Panel Baru Berhasil Dibuat:* `[%s]`\n\nApakah Anda ingin menjalankan coding agent di panel ini?", newPane.PaneID), &tele.SendOptions{
+		return c.Send(fmt.Sprintf("✂️ *New Pane Created:* `[%s]`\n\nLaunch a coding agent in this pane?", newPane.PaneID), &tele.SendOptions{
 			ParseMode:   tele.ModeMarkdown,
 			ReplyMarkup: kb,
 		})
@@ -824,14 +828,14 @@ func (s *BotServer) onActionWorkspace(c tele.Context) error {
 		paneID := strings.TrimPrefix(data, "start_menu|")
 		_ = c.Respond()
 		kb := MakeStartAgentKeyboard(paneID)
-		return c.Send(fmt.Sprintf("🚀 *Pilih Agent untuk dijalankan di panel* `[%s]`:", paneID), &tele.SendOptions{
+		return c.Send(fmt.Sprintf("🚀 *Select an Agent to launch in pane* `[%s]`:", paneID), &tele.SendOptions{
 			ParseMode:   tele.ModeMarkdown,
 			ReplyMarkup: kb,
 		})
 	}
 
 	if data == "cancel" {
-		_ = c.Respond(&tele.CallbackResponse{Text: "Dibatalkan"})
+		_ = c.Respond(&tele.CallbackResponse{Text: "Cancelled"})
 		return s.handleWorkspaces(c)
 	}
 
@@ -855,20 +859,20 @@ func (s *BotServer) onLaunchAgent(c tele.Context) error {
 	agentName := fmt.Sprintf("%s_%d", kind, time.Now().Unix()%10000)
 	err := s.client.StartAgent(ctx, agentName, kind, paneID)
 	if err != nil {
-		_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Gagal start: %v", err)})
-		return c.Send(fmt.Sprintf("❌ Gagal menjalankan agent `%s` di panel `[%s]`:\n```\n%v\n```", kind, paneID, err), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+		_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Failed to start: %v", err)})
+		return c.Send(fmt.Sprintf("❌ Failed to launch agent `%s` in pane `[%s]`:\n```\n%v\n```", kind, paneID, err), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 	}
 
 	s.state.SetSelectedAgent(c.Sender().ID, paneID)
-	_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Agent %s aktif!", kind)})
+	_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Agent %s active!", kind)})
 
-	return c.Send(fmt.Sprintf("🚀 *Agent [%s] Berhasil Dimulai!*\nPanel: `[%s]` | Nama: `%s`\n\nSilakan kirim pesan teks untuk mulai menginstruksikan agent.", kind, paneID, agentName), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Send(fmt.Sprintf("🚀 *Agent [%s] Launched!*\nPane: `[%s]` | Name: `%s`\n\nSend a text message to start prompting the agent.", kind, paneID, agentName), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 func (s *BotServer) handleNewWorkspace(c tele.Context) error {
 	args := c.Args()
 	if len(args) == 0 {
-		return c.Reply("ℹ️ Penggunaan: `/newworkspace <nama_project> [direktori_opsional]`\nContoh: `/newworkspace my-api` atau `/newworkspace frontend /Users/akbar/Code/projects/frontend`")
+		return c.Reply("ℹ️ Usage: `/newworkspace <project_name> [optional_directory]`\nExample: `/newworkspace my-api` or `/newworkspace frontend /Users/akbar/Code/projects/frontend`")
 	}
 
 	label := args[0]
@@ -884,7 +888,7 @@ func (s *BotServer) handleNewWorkspace(c tele.Context) error {
 
 	ws, rootPane, err := s.client.CreateWorkspace(ctx, label, cwd)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal membuat workspace di Herdr: %v", err))
+		return c.Reply(fmt.Sprintf("❌ Failed to create workspace in Herdr: %v", err))
 	}
 
 	s.state.SetSelectedWorkspace(c.Sender().ID, ws.WorkspaceID)
@@ -892,12 +896,12 @@ func (s *BotServer) handleNewWorkspace(c tele.Context) error {
 
 	kb := MakeStartAgentKeyboard(rootPane.PaneID)
 	msg := fmt.Sprintf(
-		"🎉 *Workspace Baru Berhasil Dibuat!*\n\n" +
-			"• Nama: *%s*\n" +
+		"🎉 *New Workspace Created!*\n\n" +
+			"• Name: *%s*\n" +
 			"• Workspace ID: `%s`\n" +
-			"• Root Panel: `[%s]`\n" +
+			"• Root Pane: `[%s]`\n" +
 			"• CWD: `%s`\n\n" +
-			"Pilih coding agent yang ingin langsung dijalankan di panel ini:",
+			"Choose a coding agent to launch in this pane:",
 		ws.Label, ws.WorkspaceID, rootPane.PaneID, cwd,
 	)
 
@@ -910,7 +914,7 @@ func (s *BotServer) handleNewWorkspace(c tele.Context) error {
 func (s *BotServer) handleSplitPane(c tele.Context) error {
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
-		return c.Reply("⚠️ Belum ada panel yang dipilih. Buka `/workspaces` terlebih dahulu.")
+		return c.Reply("⚠️ No pane selected. Open `/workspaces` first.")
 	}
 
 	direction := "right"
@@ -924,13 +928,13 @@ func (s *BotServer) handleSplitPane(c tele.Context) error {
 
 	newPane, err := s.client.SplitPane(ctx, paneID, direction)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Gagal membagi (split) panel: %v", err))
+		return c.Reply(fmt.Sprintf("❌ Failed to split pane: %v", err))
 	}
 
 	s.state.SetSelectedAgent(c.Sender().ID, newPane.PaneID)
 	kb := MakeStartAgentKeyboard(newPane.PaneID)
 
-	return c.Send(fmt.Sprintf("✂️ *Panel Baru Dibuat:* `[%s]` (arah: %s)\nPilih agent yang ingin dijalankan di panel baru ini:", newPane.PaneID, direction), &tele.SendOptions{
+	return c.Send(fmt.Sprintf("✂️ *New Pane Created:* `[%s]` (direction: %s)\nChoose an agent to launch in this new pane:", newPane.PaneID, direction), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
@@ -939,11 +943,11 @@ func (s *BotServer) handleSplitPane(c tele.Context) error {
 func (s *BotServer) handleJobs(c tele.Context) error {
 	jobs := s.state.GetActiveJobs()
 	if len(jobs) == 0 {
-		return c.Reply("ℹ️ Tidak ada agent yang sedang bekerja saat ini. Semua agent dalam keadaan `idle`.")
+		return c.Reply("ℹ️ No agents currently working. All agents are idle.")
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("⚡ *Pekerjaan Paralel Aktif (%d)*\n\n", len(jobs)))
+	sb.WriteString(fmt.Sprintf("⚡ *Active Parallel Jobs (%d)*\n\n", len(jobs)))
 
 	menu := &tele.ReplyMarkup{}
 	var rows []tele.Row
@@ -956,7 +960,7 @@ func (s *BotServer) handleJobs(c tele.Context) error {
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			"%d. ⏳ *%s* (`%s`)\n   • Waktu: `%s`\n   • Prompt: _\"%s\"_\n\n",
+			"%d. ⏳ *%s* (`%s`)\n   • Elapsed: `%s`\n   • Prompt: _\"%s\"_\n\n",
 			i+1, j.AgentName, j.PaneID, elapsed, promptSnippet,
 		))
 
@@ -975,7 +979,7 @@ func (s *BotServer) handleJobs(c tele.Context) error {
 func (s *BotServer) handleBroadcast(c tele.Context) error {
 	text := strings.TrimSpace(strings.TrimPrefix(c.Text(), "/broadcast"))
 	if text == "" {
-		return c.Reply("ℹ️ Penggunaan: `/broadcast <instruksi>`\nMengirim satu instruksi ke SEMUA agent yang sedang aktif secara bersamaan.")
+		return c.Reply("ℹ️ Usage: `/broadcast <prompt>`\nSends a prompt to ALL active agents simultaneously.")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -983,10 +987,10 @@ func (s *BotServer) handleBroadcast(c tele.Context) error {
 	cancel()
 
 	if err != nil || len(agents) == 0 {
-		return c.Reply("❌ Tidak ada agent yang sedang aktif.")
+		return c.Reply("❌ No active agents found.")
 	}
 
-	_ = c.Reply(fmt.Sprintf("📢 *Broadcasting prompt ke %d agent secara paralel...*", len(agents)), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	_ = c.Reply(fmt.Sprintf("📢 *Broadcasting prompt to %d agents in parallel...*", len(agents)), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 
 	for _, a := range agents {
 		paneID := a.PaneID

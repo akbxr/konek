@@ -26,9 +26,9 @@ var (
 		IsPersistent:   true,
 	}
 
-	BtnMenuAgents     = MainMenuMarkup.Text("🤖 Pilih Agent")
+	BtnMenuAgents     = MainMenuMarkup.Text("🤖 Agents")
 	BtnMenuStatus     = MainMenuMarkup.Text("📊 Status")
-	BtnMenuRead       = MainMenuMarkup.Text("📖 Baca Output")
+	BtnMenuRead       = MainMenuMarkup.Text("📖 Read Output")
 
 	BtnMenuWorkspaces = MainMenuMarkup.Text("📁 Workspaces")
 	BtnMenuShell      = MainMenuMarkup.Text("💻 Git Status")
@@ -36,7 +36,7 @@ var (
 
 	BtnMenuApprove    = MainMenuMarkup.Text("✅ Approve (Enter)")
 	BtnMenuReject     = MainMenuMarkup.Text("❌ Reject (n)")
-	BtnMenuHelp       = MainMenuMarkup.Text("ℹ️ Bantuan")
+	BtnMenuHelp       = MainMenuMarkup.Text("ℹ️ Help")
 )
 
 // BuildMainMenu builds and returns the persistent bottom keyboard.
@@ -129,7 +129,7 @@ func MakeWorkspaceKeyboard(workspaces []herdr.Workspace, currentWsID string) *te
 		rows = append(rows, menu.Row(btn))
 	}
 
-	btnNewWs := menu.Data("➕ Buat Workspace Baru", "act_ws", "new")
+	btnNewWs := menu.Data("➕ New Workspace", "act_ws", "new")
 	btnRefWs := menu.Data("🔄 Refresh", "ref_ws")
 	rows = append(rows, menu.Row(btnNewWs, btnRefWs))
 
@@ -186,9 +186,8 @@ func MakePaneKeyboard(wsID string, panes []herdr.Pane, currentPaneID string) *te
 		rows = append(rows, menu.Row(btnSplit, btnStart))
 	}
 
-	btnBack := menu.Data("⬅️ Kembali ke Workspaces", "ref_ws")
+	btnBack := menu.Data("⬅️ Back to Workspaces", "ref_ws")
 	rows = append(rows, menu.Row(btnBack))
-
 	menu.Inline(rows...)
 	return menu
 }
@@ -200,7 +199,7 @@ func MakeStartAgentKeyboard(paneID string) *tele.ReplyMarkup {
 	btnClaude := menu.Data("🚀 Claude Code", "launch_ag", "claude|"+paneID)
 	btnCodex := menu.Data("🚀 Codex", "launch_ag", "codex|"+paneID)
 	btnPi := menu.Data("🚀 Pi", "launch_ag", "pi|"+paneID)
-	btnCancel := menu.Data("❌ Batal", "act_ws", "cancel")
+	btnCancel := menu.Data("❌ Cancel", "act_ws", "cancel")
 
 	menu.Inline(
 		menu.Row(btnOmp, btnClaude),

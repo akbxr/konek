@@ -34,19 +34,19 @@ func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, s
 		defer state.RemoveJob(paneID)
 	}
 	// Initial acknowledge message
-	statusMsg, err := b.Send(c.Recipient(), fmt.Sprintf("⏳ Mengirim prompt ke *%s*...", agentName), &tele.SendOptions{
+	statusMsg, err := b.Send(c.Recipient(), fmt.Sprintf("⏳ Sending prompt to *%s*...", agentName), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: MakeWorkingKeyboard(paneID),
 	})
 	if err != nil {
-		_ = c.Reply(fmt.Sprintf("Gagal mengirim pesan: %v", err))
+		_ = c.Reply(fmt.Sprintf("Failed to send message: %v", err))
 		return
 	}
 
 	// Submit prompt to agent
 	err = client.PromptAgent(ctx, paneID, prompt)
 	if err != nil {
-		_, _ = b.Edit(statusMsg, fmt.Sprintf("❌ Gagal submit prompt ke *%s*:\n```\n%v\n```", agentName, err), &tele.SendOptions{
+		_, _ = b.Edit(statusMsg, fmt.Sprintf("❌ Failed to submit prompt to *%s*:\n```\n%v\n```", agentName, err), &tele.SendOptions{
 			ParseMode: tele.ModeMarkdown,
 		})
 		return
@@ -68,11 +68,11 @@ func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, s
 		case <-ctx.Done():
 			elapsed := time.Since(startTime).Truncate(time.Second)
 			if ctx.Err() == context.Canceled {
-				_, _ = b.Edit(statusMsg, fmt.Sprintf("🛑 *Proses Dihentikan (Aborted)!*\n*%s*\n\nDurasi sebelum dihentikan: `%s`", agentName, elapsed), &tele.SendOptions{
+				_, _ = b.Edit(statusMsg, fmt.Sprintf("🛑 *Aborted!*\n*%s*\n\nElapsed before abort: `%s`", agentName, elapsed), &tele.SendOptions{
 					ParseMode: tele.ModeMarkdown,
 				})
 			} else {
-				_, _ = b.Edit(statusMsg, fmt.Sprintf("⏰ *Timeout*: Prompt execution di `[%s]` melebihi batas waktu 10 menit.", paneID), &tele.SendOptions{
+				_, _ = b.Edit(statusMsg, fmt.Sprintf("⏰ *Timeout*: Prompt execution on `[%s]` exceeded 10-minute limit.", paneID), &tele.SendOptions{
 					ParseMode: tele.ModeMarkdown,
 				})
 			}
@@ -95,10 +95,10 @@ func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, s
 			// Case 1: Agent is blocked (waiting for approval or input)
 			if agent.AgentStatus == "blocked" {
 				text := fmt.Sprintf(
-					"⚠️ *Agent membutuhkan konfirmasi!*\n*%s*\n\n" +
-						"Status: `blocked` | Waktu: `%s`\n" +
+					"⚠️ *Agent requires confirmation!*\n*%s*\n\n" +
+						"Status: `blocked` | Elapsed: `%s`\n" +
 						"```\n%s\n```\n" +
-						"Pilih aksi:",
+						"Choose action:",
 					agent.DisplayName(), elapsed, outputTail,
 				)
 				_, _ = b.Edit(statusMsg, text, &tele.SendOptions{
@@ -116,7 +116,7 @@ func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, s
 			// Case 2: Agent finished (idle or done)
 			if agent.AgentStatus == "idle" || agent.AgentStatus == "done" {
 				summaryText := fmt.Sprintf(
-					"✅ *Selesai!*\n*%s*\nDurasi: `%s` | Status: `%s`",
+					"✅ *Completed!*\n*%s*\nElapsed: `%s` | Status: `%s`",
 					agent.DisplayName(), elapsed, agent.AgentStatus,
 				)
 				_, _ = b.Edit(statusMsg, summaryText, &tele.SendOptions{
@@ -155,8 +155,8 @@ func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, s
 				lastStatus = agent.AgentStatus
 
 				text := fmt.Sprintf(
-					"%s *Sedang bekerja...*\n*%s*\n" +
-						"Status: `%s` | Waktu: `%s`\n\n" +
+					"%s *Working...*\n*%s*\n" +
+						"Status: `%s` | Elapsed: `%s`\n\n" +
 						"```\n%s\n```",
 					spin, agent.DisplayName(), agent.AgentStatus, elapsed, outputTail,
 				)

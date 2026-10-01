@@ -16,7 +16,7 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("❌ Configuration error: %v\nSilakan buat file .env dari .env.example", err)
+		log.Fatalf("❌ Configuration error: %v\nPlease create a .env file from .env.example", err)
 	}
 
 	client := herdr.NewClient(cfg.HerdrBinPath)
