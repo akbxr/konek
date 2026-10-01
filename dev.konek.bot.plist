@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.konek.bot</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/akbar/Code/projects/konek/konek</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/akbar/Code/projects/konek</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/akbar/Code/projects/konek/konek.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/akbar/Code/projects/konek/konek.error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/akbar/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

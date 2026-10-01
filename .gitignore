@@ -1,0 +1,9 @@
+# Binary
+konek
+
+# Environment & credentials
+.env
+.env.local
+
+# OS
+.DS_Store
