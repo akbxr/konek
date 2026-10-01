@@ -44,6 +44,8 @@ func NewBotServer(cfg *config.Config, client *herdr.Client) (*BotServer, error) 
 
 	// Set Telegram native Command Menu (≡ button next to text input)
 	_ = b.SetCommands([]tele.Command{
+		{Text: "jobs", Description: "Pantau pekerjaan paralel yang sedang aktif"},
+		{Text: "broadcast", Description: "Kirim prompt ke semua agent sekaligus"},
 		{Text: "workspaces", Description: "Pilih workspace & kelola panel (panes)"},
 		{Text: "newworkspace", Description: "Buat workspace baru: /newworkspace <nama>"},
 		{Text: "split", Description: "Bagi (split) panel aktif"},
@@ -97,8 +99,8 @@ func (s *BotServer) registerRoutes() {
 	s.bot.Handle("/menu", s.handleMenu)
 	s.bot.Handle("/newworkspace", s.handleNewWorkspace)
 	s.bot.Handle("/split", s.handleSplitPane)
-
-	// 3. Button Endpoint Handlers (Inline Keyboards)
+	s.bot.Handle("/jobs", s.handleJobs)
+	s.bot.Handle("/broadcast", s.handleBroadcast)
 	s.bot.Handle(&BtnSelectAgent, s.onSelectAgent)
 	s.bot.Handle(&BtnRefreshAgents, s.onRefreshAgents)
 	s.bot.Handle(&BtnActionKey, s.onActionKey)
@@ -380,11 +382,48 @@ func (s *BotServer) handleTextMessage(c tele.Context) error {
 	}
 
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
+	prompt := text
+
+	// Support direct targeting with @tag prefix:
+	// e.g. @keep-silent perbaiki bug auth
+	//      @w5:p1 perbaiki bug auth
+	//      @claude perbaiki bug auth
+	if strings.HasPrefix(text, "@") {
+		parts := strings.SplitN(text, " ", 2)
+		if len(parts) == 2 {
+			tag := strings.ToLower(strings.TrimPrefix(parts[0], "@"))
+			candidatePrompt := strings.TrimSpace(parts[1])
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			agents, _ := s.client.ListAgents(ctx)
+			cancel()
+
+			for _, a := range agents {
+				targetMatched := false
+				if strings.EqualFold(a.PaneID, tag) {
+					targetMatched = true
+				} else if a.Cwd != "" && strings.Contains(strings.ToLower(filepath.Base(a.Cwd)), tag) {
+					targetMatched = true
+				} else if strings.EqualFold(a.Agent, tag) {
+					targetMatched = true
+				} else if strings.EqualFold(a.WorkspaceID, tag) {
+					targetMatched = true
+				}
+
+				if targetMatched {
+					paneID = a.PaneID
+					prompt = candidatePrompt
+					break
+				}
+			}
+		}
+	}
+
 	if paneID == "" {
 		return s.handleAgents(c)
 	}
 
-	go HandlePromptSubmission(s.bot, c, s.client, paneID, text)
+	go HandlePromptSubmission(s.bot, c, s.client, s.state, paneID, prompt)
 	return nil
 }
 
@@ -513,7 +552,7 @@ func (s *BotServer) handlePhoto(c tele.Context) error {
 		prompt = fmt.Sprintf("Periksa gambar di: %s\n\n%s", localPath, caption)
 	}
 
-	go HandlePromptSubmission(s.bot, c, s.client, paneID, prompt)
+	go HandlePromptSubmission(s.bot, c, s.client, s.state, paneID, prompt)
 	return nil
 }
 
@@ -558,7 +597,7 @@ func (s *BotServer) handleDocument(c tele.Context) error {
 		prompt = fmt.Sprintf("Periksa file di: %s\n\n%s", localPath, caption)
 	}
 
-	go HandlePromptSubmission(s.bot, c, s.client, paneID, prompt)
+	go HandlePromptSubmission(s.bot, c, s.client, s.state, paneID, prompt)
 	return nil
 }
 
@@ -879,4 +918,64 @@ func (s *BotServer) handleSplitPane(c tele.Context) error {
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
+}
+
+func (s *BotServer) handleJobs(c tele.Context) error {
+	jobs := s.state.GetActiveJobs()
+	if len(jobs) == 0 {
+		return c.Reply("ℹ️ Tidak ada agent yang sedang bekerja saat ini. Semua agent dalam keadaan `idle`.")
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("⚡ *Pekerjaan Paralel Aktif (%d)*\n\n", len(jobs)))
+
+	menu := &tele.ReplyMarkup{}
+	var rows []tele.Row
+
+	for i, j := range jobs {
+		elapsed := time.Since(j.StartTime).Truncate(time.Second)
+		promptSnippet := j.Prompt
+		if len([]rune(promptSnippet)) > 35 {
+			promptSnippet = string([]rune(promptSnippet)[:32]) + "..."
+		}
+
+		sb.WriteString(fmt.Sprintf(
+			"%d. ⏳ *%s* (`%s`)\n   • Waktu: `%s`\n   • Prompt: _\"%s\"_\n\n",
+			i+1, j.AgentName, j.PaneID, elapsed, promptSnippet,
+		))
+
+		btnStop := menu.Data(fmt.Sprintf("🛑 Stop %s", j.PaneID), "act_key", j.PaneID+"|ctrl+c")
+		btnRead := menu.Data(fmt.Sprintf("📺 Read %s", j.PaneID), "sel_pn", j.PaneID)
+		rows = append(rows, menu.Row(btnStop, btnRead))
+	}
+
+	menu.Inline(rows...)
+	return c.Send(sb.String(), &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: menu,
+	})
+}
+
+func (s *BotServer) handleBroadcast(c tele.Context) error {
+	text := strings.TrimSpace(strings.TrimPrefix(c.Text(), "/broadcast"))
+	if text == "" {
+		return c.Reply("ℹ️ Penggunaan: `/broadcast <instruksi>`\nMengirim satu instruksi ke SEMUA agent yang sedang aktif secara bersamaan.")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	agents, err := s.client.ListAgents(ctx)
+	cancel()
+
+	if err != nil || len(agents) == 0 {
+		return c.Reply("❌ Tidak ada agent yang sedang aktif.")
+	}
+
+	_ = c.Reply(fmt.Sprintf("📢 *Broadcasting prompt ke %d agent secara paralel...*", len(agents)), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+
+	for _, a := range agents {
+		paneID := a.PaneID
+		go HandlePromptSubmission(s.bot, c, s.client, s.state, paneID, text)
+	}
+
+	return nil
 }

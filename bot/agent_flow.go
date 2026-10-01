@@ -12,7 +12,7 @@ import (
 )
 
 // HandlePromptSubmission submits a user prompt to the selected agent and monitors progress.
-func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, paneID string, prompt string) {
+func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, state *SessionState, paneID string, prompt string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	agentName := paneID
@@ -29,6 +29,10 @@ func HandlePromptSubmission(b *tele.Bot, c tele.Context, client *herdr.Client, p
 		}
 	}
 
+	if state != nil {
+		state.AddJob(paneID, agentName, prompt)
+		defer state.RemoveJob(paneID)
+	}
 	// Initial acknowledge message
 	statusMsg, err := b.Send(c.Recipient(), fmt.Sprintf("⏳ Mengirim prompt ke *%s*...", agentName), &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
