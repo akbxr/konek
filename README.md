@@ -64,8 +64,13 @@ go build -o konek .
   - `/read` (tanpa argumen): Menampilkan jawaban lengkap terakhir dari agent.
   - `/read [N]`: Membaca *N* baris log mentah output terminal agent (misal: `/read 50`).
 - **/workspaces**:
-  Melihat daftar workspace di Herdr beserta jumlah tab dan pane.
+  Menampilkan daftar workspace Herdr secara interaktif dalam bentuk tombol inline. Klik workspace untuk melihat dan memilih **panel (panes)** spesifik di dalamnya!
 
+- **/newworkspace `<nama>` `[folder]`**:
+  Membuat workspace baru langsung dari Telegram. Bot akan otomatis menawarkan tombol untuk langsung menjalankan agent pilihan Anda (`OMP`, `Claude Code`, `Codex`, atau `Pi`).
+
+- **/split `[right|down]`**:
+  Membagi (split) panel terminal aktif dan menawarkan untuk menjalankan agent baru di panel tersebut.
 - **/sh `<command>`**:
   Menjalankan perintah shell langsung di host pada direktori project aktif (misal: `/sh git status`, `/sh git diff`, `/sh npm test`).
 
