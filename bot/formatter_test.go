@@ -63,3 +63,23 @@ func TestSanitizeNerdFonts(t *testing.T) {
 		t.Errorf("expected text content to be preserved, got %q", cleaned)
 	}
 }
+
+func BenchmarkSanitizeNerdFonts(b *testing.B) {
+	raw := "\uf179 \ue0b0 \uf07c ~/Code/projects/rdns \ue0b0 \uf113 \uf126 main \ue0b0 ls \U0001fbb0\n" +
+		"total 192\n-rw-r--r--@ 1 akbar staff 61K Sep 23 09:41 Cargo.lock\n"
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = SanitizeNerdFonts(raw)
+	}
+}
+
+func BenchmarkCleanTerminalChrome(b *testing.B) {
+	raw := "\uf179 \ue0b0 \uf07c ~/Code/projects/rdns \ue0b0 \uf113 \uf126 main \ue0b0 ls \U0001fbb0\n" +
+		"total 192\n-rw-r--r--@ 1 akbar staff 61K Sep 23 09:41 Cargo.lock\n"
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = CleanTerminalChrome(raw)
+	}
+}
