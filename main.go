@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	log.Println("🚀 Starting konek (Telegram bot for Herdr + OMP)...")
+	log.Println("🚀 Starting konek (Telegram bot for Herdr)...")
 
 	cfg, err := config.Load()
 	if err != nil {
