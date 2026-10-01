@@ -42,6 +42,18 @@ func NewBotServer(cfg *config.Config, client *herdr.Client) (*BotServer, error) 
 		state:  NewSessionState(),
 	}
 
+	// Set Telegram native Command Menu (≡ button next to text input)
+	_ = b.SetCommands([]tele.Command{
+		{Text: "agents", Description: "Pilih / ganti coding agent aktif"},
+		{Text: "status", Description: "Cek status detail agent saat ini"},
+		{Text: "read", Description: "Baca jawaban lengkap / log terminal"},
+		{Text: "workspaces", Description: "Daftar workspace di Herdr"},
+		{Text: "sh", Description: "Jalankan shell command (misal: /sh git status)"},
+		{Text: "stop", Description: "Hentikan proses yang berjalan (Ctrl+C)"},
+		{Text: "img", Description: "Kirim gambar dari project ke Telegram"},
+		{Text: "menu", Description: "Tampilkan menu tombol bawah"},
+	})
+
 	srv.registerRoutes()
 	return srv, nil
 }
@@ -80,13 +92,25 @@ func (s *BotServer) registerRoutes() {
 	s.bot.Handle("/keys", s.handleKeys)
 	s.bot.Handle("/stop", s.handleStop)
 	s.bot.Handle("/img", s.handleImage)
+	s.bot.Handle("/menu", s.handleMenu)
 
-	// 3. Button Endpoint Handlers
+	// 3. Button Endpoint Handlers (Inline Keyboards)
 	s.bot.Handle(&BtnSelectAgent, s.onSelectAgent)
 	s.bot.Handle(&BtnRefreshAgents, s.onRefreshAgents)
 	s.bot.Handle(&BtnActionKey, s.onActionKey)
 
-	// 4. Message Handlers (Text, Photo, Document)
+	// 4. Persistent Reply Keyboard Button Handlers (Bottom Keyboard)
+	s.bot.Handle(&BtnMenuAgents, s.handleAgents)
+	s.bot.Handle(&BtnMenuStatus, s.handleStatus)
+	s.bot.Handle(&BtnMenuRead, s.handleRead)
+	s.bot.Handle(&BtnMenuWorkspaces, s.handleWorkspaces)
+	s.bot.Handle(&BtnMenuShell, s.handleMenuGitStatus)
+	s.bot.Handle(&BtnMenuStop, s.handleStop)
+	s.bot.Handle(&BtnMenuApprove, s.handleMenuApprove)
+	s.bot.Handle(&BtnMenuReject, s.handleMenuReject)
+	s.bot.Handle(&BtnMenuHelp, s.handleStart)
+
+	// 5. Message Handlers (Text, Photo, Document)
 	s.bot.Handle(tele.OnText, s.handleTextMessage)
 	s.bot.Handle(tele.OnPhoto, s.handlePhoto)
 	s.bot.Handle(tele.OnDocument, s.handleDocument)
@@ -124,7 +148,10 @@ func (s *BotServer) handleStart(c tele.Context) error {
 		host, selectedText,
 	)
 
-	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	return c.Send(msg, &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: BuildMainMenu(),
+	})
 }
 
 func (s *BotServer) handleAgents(c tele.Context) error {
@@ -562,4 +589,66 @@ func (s *BotServer) handleImage(c tele.Context) error {
 	}
 
 	return c.Send(photo)
+}
+
+func (s *BotServer) handleMenu(c tele.Context) error {
+	return c.Send("🔘 *Menu Navigasi Aktif.* Silakan gunakan tombol di bawah:", &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: BuildMainMenu(),
+	})
+}
+
+func (s *BotServer) handleMenuGitStatus(c tele.Context) error {
+	workDir := s.cfg.DefaultCwd
+	paneID := s.state.GetSelectedAgent(c.Sender().ID)
+	if paneID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if agent, err := s.client.GetAgent(ctx, paneID); err == nil && agent.Cwd != "" {
+			base := agent.Cwd
+			workDir = base
+		}
+		cancel()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", "status", "--short", "--branch")
+	cmd.Dir = workDir
+	out, err := cmd.CombinedOutput()
+	result := strings.TrimSpace(string(out))
+	if result == "" {
+		result = "(working tree clean)"
+	}
+
+	statusEmoji := "🌿"
+	if err != nil {
+		statusEmoji = "❌"
+	}
+
+	return c.Send(fmt.Sprintf("%s *Git Status (`%s`):*\n```\n%s\n```", statusEmoji, filepath.Base(workDir), result), &tele.SendOptions{
+		ParseMode: tele.ModeMarkdown,
+	})
+}
+
+func (s *BotServer) handleMenuApprove(c tele.Context) error {
+	paneID := s.state.GetSelectedAgent(c.Sender().ID)
+	if paneID == "" {
+		return c.Reply("⚠️ Belum ada agent yang dipilih.")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = s.client.SendKeys(ctx, paneID, "enter")
+	return c.Send("✅ *Approved!* Mengirim tombol `Enter` ke agent.", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+}
+
+func (s *BotServer) handleMenuReject(c tele.Context) error {
+	paneID := s.state.GetSelectedAgent(c.Sender().ID)
+	if paneID == "" {
+		return c.Reply("⚠️ Belum ada agent yang dipilih.")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = s.client.SendKeys(ctx, paneID, "n")
+	return c.Send("❌ *Rejected!* Mengirim tombol `n` ke agent.", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }

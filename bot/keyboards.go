@@ -15,8 +15,35 @@ var (
 	BtnSelectAgent   = Menu.Data("", "sel_ag")
 	BtnRefreshAgents = Menu.Data("🔄 Refresh Agent List", "ref_ag")
 	BtnActionKey     = Menu.Data("", "act_key")
+
+	// Persistent Bottom Keyboard (ReplyMarkup)
+	MainMenuMarkup = &tele.ReplyMarkup{
+		ResizeKeyboard: true,
+		IsPersistent:   true,
+	}
+
+	BtnMenuAgents     = MainMenuMarkup.Text("🤖 Pilih Agent")
+	BtnMenuStatus     = MainMenuMarkup.Text("📊 Status")
+	BtnMenuRead       = MainMenuMarkup.Text("📖 Baca Output")
+
+	BtnMenuWorkspaces = MainMenuMarkup.Text("📁 Workspaces")
+	BtnMenuShell      = MainMenuMarkup.Text("💻 Git Status")
+	BtnMenuStop       = MainMenuMarkup.Text("🛑 Stop (Ctrl+C)")
+
+	BtnMenuApprove    = MainMenuMarkup.Text("✅ Approve (Enter)")
+	BtnMenuReject     = MainMenuMarkup.Text("❌ Reject (n)")
+	BtnMenuHelp       = MainMenuMarkup.Text("ℹ️ Bantuan")
 )
 
+// BuildMainMenu builds and returns the persistent bottom keyboard.
+func BuildMainMenu() *tele.ReplyMarkup {
+	MainMenuMarkup.Reply(
+		MainMenuMarkup.Row(BtnMenuAgents, BtnMenuStatus, BtnMenuRead),
+		MainMenuMarkup.Row(BtnMenuWorkspaces, BtnMenuShell, BtnMenuStop),
+		MainMenuMarkup.Row(BtnMenuApprove, BtnMenuReject, BtnMenuHelp),
+	)
+	return MainMenuMarkup
+}
 // MakeAgentKeyboard builds an inline keyboard listing available Herdr agents.
 func MakeAgentKeyboard(agents []herdr.Agent, currentPaneID string) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
