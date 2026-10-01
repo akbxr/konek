@@ -1,105 +1,106 @@
-# Konek ⚡
+# Konek
 
-Bot Telegram super ringan (~8 MB binary, ~10 MB RAM) berbasis **Go** untuk mengendalikan **Herdr** dan coding agent **OMP** langsung dari Telegram tanpa perlu port forwarding atau ekspos SSH publik.
+Konek adalah daemon bot Telegram yang menghubungkan ponsel ke Herdr dan coding agent di komputer lokal (OMP, Claude Code, Codex, Pi). Bot ini tidak membutuhkan port forwarding, IP publik, atau konfigurasi VPN karena berkomunikasi keluar melalui HTTPS long polling.
 
----
+## Cara kerja
 
-## 🌟 Kenapa Menggunakan Arsitektur Ini?
+- Komunikasi dua arah lewat Telegram API. Bot berjalan di komputer lokal dan menarik pesan dari server Telegram. Tidak ada port masuk yang dibuka di jaringan lokal.
+- Terhubung langsung ke Herdr socket. Bot memantau siklus hidup agent (`idle`, `working`, `blocked`, `done`) dan mengirim perintah ke pane yang sesuai.
+- Dukungan interaksi saat agent tertahan (`blocked`). Jika agent meminta izin menjalankan perintah shell atau menulis berkas, bot memunculkan tombol Approve, Reject, dan Stop di Telegram.
+- Pembacaan transcript penuh. Untuk agent yang mencatat session (seperti OMP dan Pi), bot membaca jawaban lengkap dari file `.jsonl`, bukan memotong buffer terminal yang tergulung.
+- Pembagian pesan panjang otomatis. Respons yang melebihi batas 4.096 karakter Telegram dipotong per paragraf dan dikirim berurutan.
+- Eksekusi paralel. Beberapa agent dapat bekerja bersamaan. Setiap giliran kerja memiliki pesan pemantauan tersendiri dengan status terpisah.
+- Pembatasan akses berbasis ID. Bot hanya merespons Telegram User ID yang terdaftar dalam konfigurasi whitelist. Pesan lain langsung ditolak.
 
-1. **Zero Open Ports / Zero NAT Traversal**: Bot berjalan di perangkat lokal dan berkomunikasi dengan Telegram via **Long Polling** (outbound HTTPS). Anda tidak perlu membuka port SSH di router rumah/kantor.
-2. **Native Herdr + OMP Integration**: Berinteraksi langsung dengan Herdr API Socket/CLI untuk mendeteksi lifecycle OMP (`idle`, `working`, `blocked`, `done`).
-3. **Interactive & Approval Ready**: Jika OMP meminta konfirmasi/approval (status `blocked`), bot otomatis memunculkan tombol Telegram:
-   - `[ ✅ Approve (Enter) ]`
-   - `[ ❌ Reject (n) ]`
-   - `[ 🛑 Stop (Ctrl+C) ]`
-4. **Live Progress & Full Markdown Transcript**: Status pekerjaan OMP dipantau real-time, dan hasil akhir dikirimkan lengkap sesuai format Markdown asli OMP (bukan potongan terminal yang ter-scroll).
-5. **Human-Friendly Display Names**: Menampilkan nama project dan judul task yang bersih (contoh: `keep-silent: Roblox Asset Privacy and Spawning`), bukan kode teknis pane seperti `w5:p1`.
-6. **Strict Security Whitelist**: Hanya Telegram User ID yang terdaftar yang dapat memberikan instruksi ke komputer Anda.
+## Kebutuhan sistem
 
----
+- Go 1.22 atau lebih baru
+- Herdr terpasang dan server berjalan (`herdr status`)
+- Setidaknya satu coding agent (OMP, Claude Code, Codex, atau Pi)
 
-## 🚀 Persiapan & Menjalankan
+## Instalasi dan setup
 
-### 1. Dapatkan Bot Token & User ID Telegram
-1. Buka Telegram dan cari **`@BotFather`**, kirim `/newbot`, lalu ikuti langkahnya untuk mendapatkan `TELEGRAM_BOT_TOKEN`.
-2. Cari bot **`@userinfobot`** di Telegram untuk melihat numeric ID akun Telegram Anda (misal: `123456789`).
+### 1. Dapatkan token bot dan user ID
 
-### 2. Salin dan Konfigurasi `.env`
+1. Buka `@BotFather` di Telegram, kirim `/newbot`, dan simpan token bot yang diberikan.
+2. Buka `@userinfobot` di Telegram untuk melihat ID numerik akun Anda (contoh: `123456789`).
+
+### 2. Konfigurasi environment
+
+Salin file contoh konfigurasi:
+
 ```bash
 cp .env.example .env
 ```
-Edit file `.env`:
+
+Sesuaikan isi file `.env`:
+
 ```env
-TELEGRAM_BOT_TOKEN="token_dari_botfather_disini"
-TELEGRAM_ALLOWED_USER_IDS="id_angka_anda_disini"
+TELEGRAM_BOT_TOKEN="token_dari_botfather"
+TELEGRAM_ALLOWED_USER_IDS="123456789"
 HERDR_BIN_PATH="/Users/akbar/.local/bin/herdr"
 DEFAULT_CWD="/Users/akbar/Code/projects"
 ```
 
-### 3. Build & Jalankan
-```bash
-# Build binary
-go build -o konek .
+Jika ada lebih dari satu user yang diizinkan, pisahkan ID dengan koma pada `TELEGRAM_ALLOWED_USER_IDS`.
 
-# Jalankan secara interaktif
+### 3. Kompilasi dan jalankan
+
+```bash
+go build -o konek .
 ./konek
 ```
 
----
+Ketik `/start` di Telegram untuk membuka menu navigasi.
 
-## 📱 Cara Penggunaan di Telegram
+## Perintah dan penggunaan
 
-- **Kirim Pesan Biasa**:
-  Ketik langsung apa yang ingin Anda kerjakan, misal:
-  > *"tolong perbaiki bug di auth.ts dan tambahkan unit test"*
-  Bot akan langsung meneruskannya ke agent OMP yang sedang aktif.
+### Interaksi dengan agent
 
-- **/agents**:
-  Menampilkan daftar pane/agent OMP yang aktif di Herdr dalam bentuk tombol inline. Klik untuk berpindah agent yang ingin dikontrol.
+- Kirim pesan teks langsung. Pesan diteruskan sebagai instruksi ke agent yang sedang aktif.
+- `@nama prompt`. Mengirim instruksi ke agent tertentu tanpa mengganti target utama. Nama dapat berupa label workspace, nama folder project, atau ID pane (contoh: `@keep-silent perbaiki validasi token` atau `@w5:p1 jalankan build`).
+- Kirim foto atau screenshot. Bot mengunduh gambar ke penyimpanan lokal dan meneruskannya ke agent multimodal. Tulis instruksi pada kolom caption foto.
+- `/jobs`. Menampilkan daftar pekerjaan paralel yang sedang aktif beserta durasi dan tombol pembatalan.
+- `/broadcast <instruksi>`. Mengirim instruksi yang sama ke seluruh agent aktif secara serentak.
+- `/agents`. Menampilkan daftar agent yang sedang berjalan untuk dipilih sebagai target aktif.
+- `/status`. Menampilkan detail status agent yang sedang aktif (nama project, harness, status, direktori kerja).
+- `/read [N]`. Tanpa angka, perintah ini mengambil jawaban lengkap terakhir dari session transcript. Dengan angka (misal `/read 50`), bot membaca N baris log terminal aktif.
+- `/stop`. Mengirim sinyal Ctrl+C ke agent aktif untuk membatalkan proses yang sedang berjalan.
+- `/keys <key>`. Mengirim tombol tertentu ke terminal agent (contoh: `/keys enter`, `/keys esc`, `/keys y`, `/keys n`).
 
-- **/status**:
-  Melihat status detail agent yang sedang aktif (workspace, CWD, judul terminal, dan state: `idle`/`working`/`blocked`).
+### Pengelolaan workspace dan terminal
 
-- **/read [N]**:
-  - `/read` (tanpa argumen): Menampilkan jawaban lengkap terakhir dari agent.
-  - `/read [N]`: Membaca *N* baris log mentah output terminal agent (misal: `/read 50`).
-- **/workspaces**:
-  Menampilkan daftar workspace Herdr secara interaktif dalam bentuk tombol inline. Klik workspace untuk melihat dan memilih **panel (panes)** spesifik di dalamnya!
+- `/workspaces`. Menampilkan daftar workspace Herdr sebagai tombol interaktif. Memilih workspace akan membuka daftar seluruh panel di dalamnya.
+- `/newworkspace <nama> [folder]`. Membuat workspace baru di Herdr. Jika folder tidak ditulis, direktori otomatis dibuat di bawah `DEFAULT_CWD/<nama>`. Bot langsung menawarkan pilihan untuk menjalankan OMP, Claude Code, Codex, atau Pi di panel tersebut.
+- `/split [right|down]`. Membagi panel aktif secara horizontal atau vertikal, lalu menampilkan menu untuk menjalankan agent baru.
+- `/sh <perintah>`. Menjalankan perintah shell langsung pada direktori project aktif (contoh: `/sh git status`, `/sh git diff`).
+- `/img <path>`. Mengirim file gambar dari komputer lokal ke chat Telegram (contoh: `/img screenshot.png` atau path absolut).
+- `/menu`. Menampilkan ulang keyboard menu bawah jika ditutup.
 
-- **/newworkspace `<nama>` `[folder]`**:
-  Membuat workspace baru langsung dari Telegram. Bot akan otomatis menawarkan tombol untuk langsung menjalankan agent pilihan Anda (`OMP`, `Claude Code`, `Codex`, atau `Pi`).
+## Menjalankan di background dengan macOS launchd
 
-- **/split `[right|down]`**:
-  Membagi (split) panel terminal aktif dan menawarkan untuk menjalankan agent baru di panel tersebut.
-- **/sh `<command>`**:
-  Menjalankan perintah shell langsung di host pada direktori project aktif (misal: `/sh git status`, `/sh git diff`, `/sh npm test`).
-
-- **/keys `<key>`**:
-  Mengirim tombol kontrol ke terminal agent (misal: `/keys enter`, `/keys esc`, `/keys ctrl+c`, `/keys y`).
-
-- **/stop**:
-  Shortcut mengirim sinyal `Ctrl+C` ke agent aktif untuk membatalkan proses yang sedang berjalan.
-
----
-
-## 🔄 Menjalankan sebagai Background Service (macOS LaunchAgent)
-
-Agar bot otomatis berjalan di background dan otomatis aktif saat komputer dinyalakan:
+Agar bot berjalan otomatis di latar belakang saat komputer menyala:
 
 ```bash
-# 1. Salin plist ke folder LaunchAgents
+# Salin konfigurasi plist
 cp dev.konek.bot.plist ~/Library/LaunchAgents/
 
-# 2. Muat dan jalankan service
+# Muat dan jalankan service
 launchctl load ~/Library/LaunchAgents/dev.konek.bot.plist
+```
 
-# Untuk cek status:
+Untuk memeriksa status proses:
+
+```bash
 launchctl list | grep dev.konek.bot
+```
 
-# Untuk menghentikan service:
+Untuk menghentikan service:
+
+```bash
 launchctl unload ~/Library/LaunchAgents/dev.konek.bot.plist
 ```
 
-Log aplikasi tersimpan di:
-- `konek.log` (stdout)
-- `konek.error.log` (stderr)
+Berkas log disimpan pada direktori project:
+- `konek.log` untuk keluaran standar (stdout)
+- `konek.error.log` untuk keluaran galat (stderr)
