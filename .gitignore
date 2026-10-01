@@ -7,3 +7,6 @@ konek
 
 # OS
 .DS_Store
+
+# Logs
+*.log

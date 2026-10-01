@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,7 +81,12 @@ func (s *BotServer) registerRoutes() {
 			sender := c.Sender()
 			if sender == nil || !s.cfg.AllowedUserIDs[sender.ID] {
 				if sender != nil {
-					_ = c.Reply(fmt.Sprintf("⛔ Access denied. Your User ID (%d) is not in the whitelist.", sender.ID))
+					log.Printf("⚠️ Unauthorized access attempt from Telegram User ID: %d (%s %s)", sender.ID, sender.FirstName, sender.LastName)
+					if c.Callback() != nil {
+						_ = c.Respond(&tele.CallbackResponse{Text: "Access denied."})
+					} else {
+						_ = c.Reply(fmt.Sprintf("⛔ Access denied. Your User ID (%d) is not in the whitelist.", sender.ID))
+					}
 				}
 				return nil
 			}
@@ -590,7 +596,7 @@ func (s *BotServer) handlePhoto(c tele.Context) error {
 	}
 
 	mediaDir := filepath.Join(os.TempDir(), "konek-media")
-	_ = os.MkdirAll(mediaDir, 0755)
+	_ = os.MkdirAll(mediaDir, 0700)
 
 	fileName := fmt.Sprintf("photo_%d_%d.jpg", time.Now().Unix(), c.Sender().ID)
 	localPath := filepath.Join(mediaDir, fileName)
@@ -632,7 +638,7 @@ func (s *BotServer) handleDocument(c tele.Context) error {
 	}
 
 	mediaDir := filepath.Join(os.TempDir(), "konek-media")
-	_ = os.MkdirAll(mediaDir, 0755)
+	_ = os.MkdirAll(mediaDir, 0700)
 
 	cleanFileName := filepath.Base(doc.FileName)
 	if cleanFileName == "" || cleanFileName == "." {
@@ -684,6 +690,14 @@ func (s *BotServer) handleImage(c tele.Context) error {
 	fullPath := imgPath
 	if !filepath.IsAbs(fullPath) {
 		fullPath = filepath.Join(baseDir, imgPath)
+	}
+
+	ext := strings.ToLower(filepath.Ext(fullPath))
+	validExts := map[string]bool{
+		".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".gif": true, ".bmp": true,
+	}
+	if !validExts[ext] {
+		return c.Reply("❌ Only image files (.png, .jpg, .jpeg, .webp, .gif) can be viewed with /img.")
 	}
 
 	info, err := os.Stat(fullPath)
@@ -902,6 +916,15 @@ func (s *BotServer) onLaunchAgent(c tele.Context) error {
 	kind := parts[0]
 	paneID := parts[1]
 
+	validKinds := map[string]bool{
+		"omp": true, "claude": true, "codex": true, "pi": true,
+		"agy": true, "opencode": true, "gemini": true, "cursor": true,
+	}
+	if !validKinds[kind] {
+		_ = c.Respond(&tele.CallbackResponse{Text: "Unsupported agent kind"})
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -924,7 +947,10 @@ func (s *BotServer) handleNewWorkspace(c tele.Context) error {
 		return c.Reply("ℹ️ Usage: `/newworkspace <project_name> [optional_directory]`\nExample: `/newworkspace my-api` or `/newworkspace frontend /Users/akbar/Code/projects/frontend`")
 	}
 
-	label := args[0]
+	label := strings.TrimSpace(args[0])
+	if strings.HasPrefix(label, "-") || strings.ContainsAny(label, "/\\:?*\"<>|") {
+		return c.Reply("❌ Invalid workspace name. Do not start with '-' or use path separators.")
+	}
 	cwd := filepath.Join(s.cfg.DefaultCwd, label)
 	if len(args) > 1 {
 		cwd = args[1]
