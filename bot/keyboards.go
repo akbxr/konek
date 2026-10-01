@@ -23,7 +23,6 @@ var (
 	// Persistent Bottom Keyboard (ReplyMarkup)
 	MainMenuMarkup = &tele.ReplyMarkup{
 		ResizeKeyboard: true,
-		IsPersistent:   true,
 	}
 
 	BtnMenuAgents     = MainMenuMarkup.Text("🤖 Agents")

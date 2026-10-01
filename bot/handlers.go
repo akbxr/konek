@@ -58,6 +58,7 @@ func NewBotServer(cfg *config.Config, client *herdr.Client) (*BotServer, error) 
 		{Text: "sh", Description: "Run a shell command on host (e.g. /sh git status)"},
 		{Text: "img", Description: "Send image from host to Telegram"},
 		{Text: "menu", Description: "Show bottom quick menu"},
+		{Text: "hidemenu", Description: "Hide bottom quick menu"},
 	})
 
 	srv.registerRoutes()
@@ -101,6 +102,7 @@ func (s *BotServer) registerRoutes() {
 	s.bot.Handle("/ctrlc", s.handleInterrupt)
 	s.bot.Handle("/img", s.handleImage)
 	s.bot.Handle("/menu", s.handleMenu)
+	s.bot.Handle("/hidemenu", s.handleHideMenu)
 	s.bot.Handle("/newworkspace", s.handleNewWorkspace)
 	s.bot.Handle("/split", s.handleSplitPane)
 	s.bot.Handle("/jobs", s.handleJobs)
@@ -691,6 +693,12 @@ func (s *BotServer) handleMenu(c tele.Context) error {
 	return c.Send("🔘 *Navigation Menu Active.* Use the buttons below:", &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: BuildMainMenu(),
+	})
+}
+
+func (s *BotServer) handleHideMenu(c tele.Context) error {
+	return c.Send("Keyboard menu hidden. Type /menu or tap the menu icon to bring it back.", &tele.SendOptions{
+		ReplyMarkup: &tele.ReplyMarkup{RemoveKeyboard: true},
 	})
 }
 
