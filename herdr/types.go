@@ -100,3 +100,68 @@ type WorkspaceListResponse struct {
 		Workspaces []Workspace `json:"workspaces"`
 	} `json:"result"`
 }
+
+type Pane struct {
+	PaneID                string        `json:"pane_id"`
+	WorkspaceID           string        `json:"workspace_id"`
+	TabID                 string        `json:"tab_id"`
+	Cwd                   string        `json:"cwd"`
+	ForegroundCwd         string        `json:"foreground_cwd"`
+	Agent                 string        `json:"agent"`
+	AgentStatus           string        `json:"agent_status"`
+	TerminalTitle         string        `json:"terminal_title"`
+	TerminalTitleStripped string        `json:"terminal_title_stripped"`
+	Focused               bool          `json:"focused"`
+	AgentSession          *AgentSession `json:"agent_session,omitempty"`
+}
+
+func (p *Pane) DisplayName() string {
+	title := CleanTitle(p.TerminalTitleStripped)
+	if title == "" {
+		title = CleanTitle(p.TerminalTitle)
+	}
+
+	projectName := ""
+	if p.Cwd != "" {
+		projectName = filepath.Base(p.Cwd)
+	}
+
+	agentKind := p.Agent
+	if agentKind == "" {
+		agentKind = "shell"
+	}
+
+	if projectName != "" && title != "" {
+		return fmt.Sprintf("[%s] %s: %s", agentKind, projectName, title)
+	}
+	if title != "" {
+		return fmt.Sprintf("[%s] %s", agentKind, title)
+	}
+	if projectName != "" {
+		return fmt.Sprintf("[%s] %s", agentKind, projectName)
+	}
+	return fmt.Sprintf("[%s] %s", agentKind, p.PaneID)
+}
+
+type PaneListResponse struct {
+	ID     string `json:"id"`
+	Result struct {
+		Panes []Pane `json:"panes"`
+	} `json:"result"`
+}
+
+type WorkspaceCreateResponse struct {
+	ID     string `json:"id"`
+	Result struct {
+		Type      string    `json:"type"`
+		Workspace Workspace `json:"workspace"`
+		RootPane  Pane      `json:"root_pane"`
+	} `json:"result"`
+}
+
+type PaneSplitResponse struct {
+	ID     string `json:"id"`
+	Result struct {
+		Pane Pane `json:"pane"`
+	} `json:"result"`
+}

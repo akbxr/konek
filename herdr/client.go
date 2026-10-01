@@ -153,3 +153,79 @@ func (c *Client) WaitForSettled(ctx context.Context, target string, timeout time
 		}
 	}
 }
+
+// CreateWorkspace creates a new workspace with the given label and directory.
+func (c *Client) CreateWorkspace(ctx context.Context, label string, cwd string) (*Workspace, *Pane, error) {
+	args := []string{"workspace", "create"}
+	if label != "" {
+		args = append(args, "--label", label)
+	}
+	if cwd != "" {
+		args = append(args, "--cwd", cwd)
+	}
+	args = append(args, "--no-focus")
+
+	out, err := c.execCommand(ctx, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var resp WorkspaceCreateResponse
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse workspace create JSON: %w", err)
+	}
+	return &resp.Result.Workspace, &resp.Result.RootPane, nil
+}
+
+// ListPanes lists all panes, optionally filtered by workspace ID.
+func (c *Client) ListPanes(ctx context.Context, workspaceID ...string) ([]Pane, error) {
+	args := []string{"pane", "list"}
+	if len(workspaceID) > 0 && workspaceID[0] != "" {
+		args = append(args, "--workspace", workspaceID[0])
+	}
+
+	out, err := c.execCommand(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp PaneListResponse
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse pane list JSON: %w", err)
+	}
+	return resp.Result.Panes, nil
+}
+
+// SplitPane splits an existing pane in the specified direction ("right" or "down").
+func (c *Client) SplitPane(ctx context.Context, paneID string, direction string) (*Pane, error) {
+	if direction != "down" {
+		direction = "right"
+	}
+	out, err := c.execCommand(ctx, "pane", "split", paneID, "--direction", direction, "--no-focus")
+	if err != nil {
+		return nil, err
+	}
+
+	var resp PaneSplitResponse
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse pane split JSON: %w", err)
+	}
+	return &resp.Result.Pane, nil
+}
+
+// StartAgent launches a supported agent kind (omp, claude, codex, pi, etc.) in an existing shell pane.
+func (c *Client) StartAgent(ctx context.Context, name string, kind string, paneID string, extraArgs ...string) error {
+	args := []string{"agent", "start", name, "--kind", kind, "--pane", paneID}
+	if len(extraArgs) > 0 {
+		args = append(args, "--")
+		args = append(args, extraArgs...)
+	}
+	_, err := c.execCommand(ctx, args...)
+	return err
+}
+
+// CloseWorkspace closes a workspace by ID.
+func (c *Client) CloseWorkspace(ctx context.Context, workspaceID string) error {
+	_, err := c.execCommand(ctx, "workspace", "close", workspaceID)
+	return err
+}

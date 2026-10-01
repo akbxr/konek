@@ -44,10 +44,12 @@ func NewBotServer(cfg *config.Config, client *herdr.Client) (*BotServer, error) 
 
 	// Set Telegram native Command Menu (≡ button next to text input)
 	_ = b.SetCommands([]tele.Command{
+		{Text: "workspaces", Description: "Pilih workspace & kelola panel (panes)"},
+		{Text: "newworkspace", Description: "Buat workspace baru: /newworkspace <nama>"},
+		{Text: "split", Description: "Bagi (split) panel aktif"},
 		{Text: "agents", Description: "Pilih / ganti coding agent aktif"},
 		{Text: "status", Description: "Cek status detail agent saat ini"},
 		{Text: "read", Description: "Baca jawaban lengkap / log terminal"},
-		{Text: "workspaces", Description: "Daftar workspace di Herdr"},
 		{Text: "sh", Description: "Jalankan shell command (misal: /sh git status)"},
 		{Text: "stop", Description: "Hentikan proses yang berjalan (Ctrl+C)"},
 		{Text: "img", Description: "Kirim gambar dari project ke Telegram"},
@@ -93,12 +95,18 @@ func (s *BotServer) registerRoutes() {
 	s.bot.Handle("/stop", s.handleStop)
 	s.bot.Handle("/img", s.handleImage)
 	s.bot.Handle("/menu", s.handleMenu)
+	s.bot.Handle("/newworkspace", s.handleNewWorkspace)
+	s.bot.Handle("/split", s.handleSplitPane)
 
 	// 3. Button Endpoint Handlers (Inline Keyboards)
 	s.bot.Handle(&BtnSelectAgent, s.onSelectAgent)
 	s.bot.Handle(&BtnRefreshAgents, s.onRefreshAgents)
 	s.bot.Handle(&BtnActionKey, s.onActionKey)
-
+	s.bot.Handle(&BtnSelectWorkspace, s.onSelectWorkspace)
+	s.bot.Handle(&BtnRefreshWorkspaces, s.onRefreshWorkspaces)
+	s.bot.Handle(&BtnSelectPane, s.onSelectPane)
+	s.bot.Handle(&BtnActionWorkspace, s.onActionWorkspace)
+	s.bot.Handle(&BtnLaunchAgent, s.onLaunchAgent)
 	// 4. Persistent Reply Keyboard Button Handlers (Bottom Keyboard)
 	s.bot.Handle(&BtnMenuAgents, s.handleAgents)
 	s.bot.Handle(&BtnMenuStatus, s.handleStatus)
@@ -189,17 +197,17 @@ func (s *BotServer) handleWorkspaces(c tele.Context) error {
 		return c.Reply(fmt.Sprintf("❌ Gagal mengambil daftar workspace: %v", err))
 	}
 
-	var sb strings.Builder
-	sb.WriteString("📂 *Daftar Workspaces Herdr:*\n\n")
-	for _, w := range workspaces {
-		status := w.AgentStatus
-		if status == "" {
-			status = "none"
-		}
-		sb.WriteString(fmt.Sprintf("• *%s* (`%s`) — Status: `%s` | Tabs: %d | Panes: %d\n", w.Label, w.WorkspaceID, status, w.TabCount, w.PaneCount))
+	if len(workspaces) == 0 {
+		return c.Reply("ℹ️ Belum ada workspace di Herdr. Buat dengan `/newworkspace <nama>`.")
 	}
 
-	return c.Send(sb.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	currentWs := s.state.GetSelectedWorkspace(c.Sender().ID)
+	kb := MakeWorkspaceKeyboard(workspaces, currentWs)
+
+	return c.Send("📂 *Pilih Workspace Herdr:*\nKlik salah satu workspace untuk mengelola panel (pane) di dalamnya:", &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: kb,
+	})
 }
 
 func (s *BotServer) handleStatus(c tele.Context) error {
@@ -651,4 +659,224 @@ func (s *BotServer) handleMenuReject(c tele.Context) error {
 	defer cancel()
 	_ = s.client.SendKeys(ctx, paneID, "n")
 	return c.Send("❌ *Rejected!* Mengirim tombol `n` ke agent.", &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+}
+
+func (s *BotServer) onSelectWorkspace(c tele.Context) error {
+	wsID := strings.TrimSpace(c.Data())
+	if wsID == "" {
+		return c.Respond()
+	}
+
+	s.state.SetSelectedWorkspace(c.Sender().ID, wsID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	panes, err := s.client.ListPanes(ctx, wsID)
+	if err != nil {
+		_ = c.Respond(&tele.CallbackResponse{Text: "Gagal memuat panes"})
+		return nil
+	}
+
+	currentPane := s.state.GetSelectedAgent(c.Sender().ID)
+	kb := MakePaneKeyboard(wsID, panes, currentPane)
+
+	_ = c.Edit(fmt.Sprintf("📂 *Workspace [%s]*\nPilih panel (pane) untuk dikontrol atau dioperasikan:", wsID), &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: kb,
+	})
+	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Workspace %s dipilih", wsID)})
+}
+
+func (s *BotServer) onRefreshWorkspaces(c tele.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	workspaces, err := s.client.ListWorkspaces(ctx)
+	if err != nil {
+		return c.Respond(&tele.CallbackResponse{Text: "Gagal refresh"})
+	}
+
+	currentWs := s.state.GetSelectedWorkspace(c.Sender().ID)
+	kb := MakeWorkspaceKeyboard(workspaces, currentWs)
+
+	_ = c.Edit("📂 *Pilih Workspace Herdr:*\nKlik salah satu workspace untuk mengelola panel (pane) di dalamnya:", &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: kb,
+	})
+	return c.Respond(&tele.CallbackResponse{Text: "Workspaces refreshed"})
+}
+
+func (s *BotServer) onSelectPane(c tele.Context) error {
+	paneID := strings.TrimSpace(c.Data())
+	if paneID == "" {
+		return c.Respond()
+	}
+
+	s.state.SetSelectedAgent(c.Sender().ID, paneID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	name := paneID
+	if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
+		name = a.DisplayName()
+	}
+
+	wsID := s.state.GetSelectedWorkspace(c.Sender().ID)
+	panes, _ := s.client.ListPanes(ctx, wsID)
+	kb := MakePaneKeyboard(wsID, panes, paneID)
+
+	_ = c.Edit(fmt.Sprintf("🎯 *Panel aktif diubah ke:*\n*%s*\n\nAnda sekarang dapat mengirim prompt teks langsung ke panel ini!", name), &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: kb,
+	})
+	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Panel %s aktif", paneID)})
+}
+
+func (s *BotServer) onActionWorkspace(c tele.Context) error {
+	data := strings.TrimSpace(c.Data())
+
+	if data == "new" {
+		_ = c.Respond(&tele.CallbackResponse{Text: "Ketik /newworkspace"})
+		return c.Send("➕ *Buat Workspace Baru*\n\nKetik perintah:\n`/newworkspace <nama_project> [direktori_opsional]`\n\nContoh:\n`/newworkspace backend`\n`/newworkspace my-app /Users/akbar/Code/projects/my-app`", &tele.SendOptions{
+			ParseMode: tele.ModeMarkdown,
+		})
+	}
+
+	if strings.HasPrefix(data, "split|") {
+		paneID := strings.TrimPrefix(data, "split|")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		newPane, err := s.client.SplitPane(ctx, paneID, "right")
+		if err != nil {
+			_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Gagal split: %v", err)})
+			return nil
+		}
+
+		_ = c.Respond(&tele.CallbackResponse{Text: "Panel baru dibuat!"})
+		s.state.SetSelectedAgent(c.Sender().ID, newPane.PaneID)
+
+		kb := MakeStartAgentKeyboard(newPane.PaneID)
+		return c.Send(fmt.Sprintf("✂️ *Panel Baru Berhasil Dibuat:* `[%s]`\n\nApakah Anda ingin menjalankan coding agent di panel ini?", newPane.PaneID), &tele.SendOptions{
+			ParseMode:   tele.ModeMarkdown,
+			ReplyMarkup: kb,
+		})
+	}
+
+	if strings.HasPrefix(data, "start_menu|") {
+		paneID := strings.TrimPrefix(data, "start_menu|")
+		_ = c.Respond()
+		kb := MakeStartAgentKeyboard(paneID)
+		return c.Send(fmt.Sprintf("🚀 *Pilih Agent untuk dijalankan di panel* `[%s]`:", paneID), &tele.SendOptions{
+			ParseMode:   tele.ModeMarkdown,
+			ReplyMarkup: kb,
+		})
+	}
+
+	if data == "cancel" {
+		_ = c.Respond(&tele.CallbackResponse{Text: "Dibatalkan"})
+		return s.handleWorkspaces(c)
+	}
+
+	_ = c.Respond()
+	return nil
+}
+
+func (s *BotServer) onLaunchAgent(c tele.Context) error {
+	data := strings.TrimSpace(c.Data())
+	parts := strings.SplitN(data, "|", 2)
+	if len(parts) != 2 {
+		return c.Respond()
+	}
+
+	kind := parts[0]
+	paneID := parts[1]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	agentName := fmt.Sprintf("%s_%d", kind, time.Now().Unix()%10000)
+	err := s.client.StartAgent(ctx, agentName, kind, paneID)
+	if err != nil {
+		_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Gagal start: %v", err)})
+		return c.Send(fmt.Sprintf("❌ Gagal menjalankan agent `%s` di panel `[%s]`:\n```\n%v\n```", kind, paneID, err), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	}
+
+	s.state.SetSelectedAgent(c.Sender().ID, paneID)
+	_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Agent %s aktif!", kind)})
+
+	return c.Send(fmt.Sprintf("🚀 *Agent [%s] Berhasil Dimulai!*\nPanel: `[%s]` | Nama: `%s`\n\nSilakan kirim pesan teks untuk mulai menginstruksikan agent.", kind, paneID, agentName), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+}
+
+func (s *BotServer) handleNewWorkspace(c tele.Context) error {
+	args := c.Args()
+	if len(args) == 0 {
+		return c.Reply("ℹ️ Penggunaan: `/newworkspace <nama_project> [direktori_opsional]`\nContoh: `/newworkspace my-api` atau `/newworkspace frontend /Users/akbar/Code/projects/frontend`")
+	}
+
+	label := args[0]
+	cwd := filepath.Join(s.cfg.DefaultCwd, label)
+	if len(args) > 1 {
+		cwd = args[1]
+	}
+
+	_ = os.MkdirAll(cwd, 0755)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ws, rootPane, err := s.client.CreateWorkspace(ctx, label, cwd)
+	if err != nil {
+		return c.Reply(fmt.Sprintf("❌ Gagal membuat workspace di Herdr: %v", err))
+	}
+
+	s.state.SetSelectedWorkspace(c.Sender().ID, ws.WorkspaceID)
+	s.state.SetSelectedAgent(c.Sender().ID, rootPane.PaneID)
+
+	kb := MakeStartAgentKeyboard(rootPane.PaneID)
+	msg := fmt.Sprintf(
+		"🎉 *Workspace Baru Berhasil Dibuat!*\n\n" +
+			"• Nama: *%s*\n" +
+			"• Workspace ID: `%s`\n" +
+			"• Root Panel: `[%s]`\n" +
+			"• CWD: `%s`\n\n" +
+			"Pilih coding agent yang ingin langsung dijalankan di panel ini:",
+		ws.Label, ws.WorkspaceID, rootPane.PaneID, cwd,
+	)
+
+	return c.Send(msg, &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: kb,
+	})
+}
+
+func (s *BotServer) handleSplitPane(c tele.Context) error {
+	paneID := s.state.GetSelectedAgent(c.Sender().ID)
+	if paneID == "" {
+		return c.Reply("⚠️ Belum ada panel yang dipilih. Buka `/workspaces` terlebih dahulu.")
+	}
+
+	direction := "right"
+	args := c.Args()
+	if len(args) > 0 && (args[0] == "down" || args[0] == "vertical") {
+		direction = "down"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	newPane, err := s.client.SplitPane(ctx, paneID, direction)
+	if err != nil {
+		return c.Reply(fmt.Sprintf("❌ Gagal membagi (split) panel: %v", err))
+	}
+
+	s.state.SetSelectedAgent(c.Sender().ID, newPane.PaneID)
+	kb := MakeStartAgentKeyboard(newPane.PaneID)
+
+	return c.Send(fmt.Sprintf("✂️ *Panel Baru Dibuat:* `[%s]` (arah: %s)\nPilih agent yang ingin dijalankan di panel baru ini:", newPane.PaneID, direction), &tele.SendOptions{
+		ParseMode:   tele.ModeMarkdown,
+		ReplyMarkup: kb,
+	})
 }

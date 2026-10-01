@@ -14,8 +14,12 @@ var (
 	// Global button templates for registering handlers
 	BtnSelectAgent   = Menu.Data("", "sel_ag")
 	BtnRefreshAgents = Menu.Data("🔄 Refresh Agent List", "ref_ag")
-	BtnActionKey     = Menu.Data("", "act_key")
-
+	BtnActionKey          = Menu.Data("", "act_key")
+	BtnSelectWorkspace    = Menu.Data("", "sel_ws")
+	BtnRefreshWorkspaces  = Menu.Data("🔄 Refresh", "ref_ws")
+	BtnSelectPane         = Menu.Data("", "sel_pn")
+	BtnActionWorkspace    = Menu.Data("", "act_ws")
+	BtnLaunchAgent        = Menu.Data("", "launch_ag")
 	// Persistent Bottom Keyboard (ReplyMarkup)
 	MainMenuMarkup = &tele.ReplyMarkup{
 		ResizeKeyboard: true,
@@ -105,6 +109,103 @@ func MakeBlockedKeyboard(paneID string) *tele.ReplyMarkup {
 	menu.Inline(
 		menu.Row(btnApprove, btnReject),
 		menu.Row(btnStop),
+	)
+	return menu
+}
+
+// MakeWorkspaceKeyboard builds an inline keyboard listing available Herdr workspaces.
+func MakeWorkspaceKeyboard(workspaces []herdr.Workspace, currentWsID string) *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	var rows []tele.Row
+
+	for _, w := range workspaces {
+		statusEmoji := "📂"
+		if w.WorkspaceID == currentWsID {
+			statusEmoji = "🎯"
+		}
+
+		label := fmt.Sprintf("%s %s (%d panes)", statusEmoji, w.Label, w.PaneCount)
+		btn := menu.Data(label, "sel_ws", w.WorkspaceID)
+		rows = append(rows, menu.Row(btn))
+	}
+
+	btnNewWs := menu.Data("➕ Buat Workspace Baru", "act_ws", "new")
+	btnRefWs := menu.Data("🔄 Refresh", "ref_ws")
+	rows = append(rows, menu.Row(btnNewWs, btnRefWs))
+
+	menu.Inline(rows...)
+	return menu
+}
+
+// MakePaneKeyboard builds an inline keyboard listing panes in a workspace.
+func MakePaneKeyboard(wsID string, panes []herdr.Pane, currentPaneID string) *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	var rows []tele.Row
+
+	for _, p := range panes {
+		statusEmoji := "💻"
+		if p.Agent != "" {
+			switch p.AgentStatus {
+			case "working":
+				statusEmoji = "⏳"
+			case "blocked":
+				statusEmoji = "⚠️"
+			case "done":
+				statusEmoji = "✅"
+			case "idle":
+				statusEmoji = "🟢"
+			}
+		}
+
+		selectedMark := ""
+		if p.PaneID == currentPaneID {
+			selectedMark = " 🎯"
+		}
+
+		name := p.DisplayName()
+		if len([]rune(name)) > 30 {
+			name = string([]rune(name)[:27]) + "..."
+		}
+
+		label := fmt.Sprintf("%s %s%s", statusEmoji, name, selectedMark)
+		btn := menu.Data(label, "sel_pn", p.PaneID)
+		rows = append(rows, menu.Row(btn))
+	}
+
+	var targetPane string
+	if len(panes) > 0 {
+		targetPane = panes[0].PaneID
+		if currentPaneID != "" {
+			targetPane = currentPaneID
+		}
+	}
+
+	if targetPane != "" {
+		btnSplit := menu.Data("➕ Split Pane", "act_ws", "split|"+targetPane)
+		btnStart := menu.Data("🚀 Launch Agent", "act_ws", "start_menu|"+targetPane)
+		rows = append(rows, menu.Row(btnSplit, btnStart))
+	}
+
+	btnBack := menu.Data("⬅️ Kembali ke Workspaces", "ref_ws")
+	rows = append(rows, menu.Row(btnBack))
+
+	menu.Inline(rows...)
+	return menu
+}
+
+// MakeStartAgentKeyboard shows agent kind choices to launch in a pane.
+func MakeStartAgentKeyboard(paneID string) *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	btnOmp := menu.Data("🚀 OMP", "launch_ag", "omp|"+paneID)
+	btnClaude := menu.Data("🚀 Claude Code", "launch_ag", "claude|"+paneID)
+	btnCodex := menu.Data("🚀 Codex", "launch_ag", "codex|"+paneID)
+	btnPi := menu.Data("🚀 Pi", "launch_ag", "pi|"+paneID)
+	btnCancel := menu.Data("❌ Batal", "act_ws", "cancel")
+
+	menu.Inline(
+		menu.Row(btnOmp, btnClaude),
+		menu.Row(btnCodex, btnPi),
+		menu.Row(btnCancel),
 	)
 	return menu
 }
