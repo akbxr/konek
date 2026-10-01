@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"regexp"
 	"strings"
 
 	tele "gopkg.in/telebot.v3"
@@ -53,12 +54,66 @@ func SplitTelegramMessage(text string, maxLen int) []string {
 	return chunks
 }
 
-// CleanTerminalChrome removes status bar, tokens/sec, and prompt lines from terminal text.
+var (
+	multiSpaceRegex = regexp.MustCompile(` {3,}`)
+
+	// Map of common Nerd Font symbols to clean unicode / ASCII equivalents
+	nerdFontMap = map[rune]string{
+		0xf126: "git:", // git branch
+		0xf418: "git:", // git octicon branch
+		0xe0a0: "git:", // powerline branch
+		0xf113: "",     // github icon
+		0xf07c: "📁 ",  // folder icon
+		0xf179: "",     // apple logo
+		0xf252: "⏱ ",   // hourglass
+		0xe0b0: " ",    // powerline right triangle
+		0xe0b1: " ",    // powerline right thin
+		0xe0b2: " ",    // powerline left triangle
+		0xe0b3: " ",    // powerline left thin
+	}
+)
+
+// SanitizeNerdFonts replaces or removes unrenderable Nerd Font, Powerline,
+// and Legacy Computing glyphs that cause tofu boxes (🮰) on mobile devices.
+func SanitizeNerdFonts(s string) string {
+	var sb strings.Builder
+	sb.Grow(len(s))
+
+	for _, r := range s {
+		// 1. Check known mappings
+		if repl, ok := nerdFontMap[r]; ok {
+			sb.WriteString(repl)
+			continue
+		}
+
+		// 2. Filter out Unicode Private Use Area (Nerd Fonts, FontAwesome, Octicons)
+		// BMP PUA: 0xE000 - 0xF8FF
+		// Supplementary PUA A: 0xF0000 - 0xFFFFD
+		// Supplementary PUA B: 0x100000 - 0x10FFFD
+		if (r >= 0xe000 && r <= 0xf8ff) || (r >= 0xf0000 && r <= 0x10fffd) {
+			continue
+		}
+
+		// 3. Filter out Symbols for Legacy Computing (0x1FB00 - 0x1FBFF)
+		// Used by p10k for rounded segments, renders as 🮰 on mobile
+		if r >= 0x1fb00 && r <= 0x1fbff {
+			continue
+		}
+
+		sb.WriteRune(r)
+	}
+
+	return sb.String()
+}
+
+// CleanTerminalChrome removes status bar, tokens/sec, prompt lines, and sanitizes Nerd Fonts.
 func CleanTerminalChrome(raw string) string {
 	lines := strings.Split(raw, "\n")
 	var cleaned []string
 
 	for _, line := range lines {
+		line = SanitizeNerdFonts(line)
+		line = multiSpaceRegex.ReplaceAllString(line, "  ")
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			cleaned = append(cleaned, "")

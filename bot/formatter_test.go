@@ -48,3 +48,18 @@ func TestCleanTerminalChrome(t *testing.T) {
 		t.Errorf("expected content to be preserved")
 	}
 }
+
+func TestSanitizeNerdFonts(t *testing.T) {
+	raw := "\uf179 \ue0b0 \uf07c ~/Code/projects/rdns \ue0b0 \uf113 \uf126 main \ue0b0 ls \U0001fbb0\nhello"
+	cleaned := SanitizeNerdFonts(raw)
+
+	if strings.Contains(cleaned, "\U0001fbb0") {
+		t.Errorf("expected legacy computing symbols to be removed")
+	}
+	if strings.Contains(cleaned, "\ue0b0") {
+		t.Errorf("expected powerline triangle to be replaced")
+	}
+	if !strings.Contains(cleaned, "main") || !strings.Contains(cleaned, "ls") {
+		t.Errorf("expected text content to be preserved, got %q", cleaned)
+	}
+}
