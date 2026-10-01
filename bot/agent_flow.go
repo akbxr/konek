@@ -185,3 +185,45 @@ func getTailLines(text string, n int) string {
 	}
 	return strings.Join(nonEmpty[len(nonEmpty)-n:], "\n")
 }
+
+// HandleShellPaneExecution executes a command in a raw shell pane and returns the output to Telegram.
+func HandleShellPaneExecution(b *tele.Bot, c tele.Context, client *herdr.Client, paneID string, cmd string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	statusMsg, err := b.Send(c.Recipient(), fmt.Sprintf("💻 *Running in pane `[%s]`...*\n`$ %s`", paneID, cmd), &tele.SendOptions{
+		ParseMode: tele.ModeMarkdown,
+	})
+	if err != nil {
+		return
+	}
+
+	err = client.RunInPane(ctx, paneID, cmd)
+	if err != nil {
+		_, _ = b.Edit(statusMsg, fmt.Sprintf("❌ Failed to execute command in pane `[%s]`:\n```\n%v\n```", paneID, err), &tele.SendOptions{
+			ParseMode: tele.ModeMarkdown,
+		})
+		return
+	}
+
+	time.Sleep(1200 * time.Millisecond)
+
+	output, err := client.ReadPane(ctx, paneID, 30)
+	if err != nil {
+		_, _ = b.Edit(statusMsg, fmt.Sprintf("✅ Command sent to pane `[%s]`.", paneID), &tele.SendOptions{
+			ParseMode: tele.ModeMarkdown,
+		})
+		return
+	}
+
+	cleanOutput := CleanTerminalChrome(output)
+	cleanOutput = getTailLines(cleanOutput, 25)
+	if cleanOutput == "" {
+		cleanOutput = "(no output)"
+	}
+
+	resultText := fmt.Sprintf("💻 *Pane `[%s]` Output:*\n`$ %s`\n```\n%s\n```", paneID, cmd, cleanOutput)
+	_, _ = b.Edit(statusMsg, resultText, &tele.SendOptions{
+		ParseMode: tele.ModeMarkdown,
+	})
+}

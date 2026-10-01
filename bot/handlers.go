@@ -455,6 +455,18 @@ func (s *BotServer) handleTextMessage(c tele.Context) error {
 		return s.handleAgents(c)
 	}
 
+	// Check whether target pane hosts an AI agent or a raw shell terminal
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	agent, _ := s.client.GetAgent(ctx, paneID)
+	cancel()
+
+	if agent == nil || agent.Agent == "" {
+		// Execute directly in the shell pane and capture output
+		go HandleShellPaneExecution(s.bot, c, s.client, paneID, prompt)
+		return nil
+	}
+
+	// AI agent pane: prompt the agent
 	go HandlePromptSubmission(s.bot, c, s.client, s.state, paneID, prompt)
 	return nil
 }

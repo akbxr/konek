@@ -85,12 +85,24 @@ func (c *Client) PromptAgent(ctx context.Context, target string, prompt string) 
 	return err
 }
 
-// ReadAgent returns the recent terminal output of the target agent.
+// ReadAgent returns recent output using agent read if available, falling back to pane read.
 func (c *Client) ReadAgent(ctx context.Context, target string, lines int) (string, error) {
 	if lines <= 0 {
 		lines = 60
 	}
 	out, err := c.execCommand(ctx, "agent", "read", target, "--source", "recent-unwrapped", "--lines", strconv.Itoa(lines))
+	if err != nil {
+		return c.ReadPane(ctx, target, lines)
+	}
+	return StripANSI(string(out)), nil
+}
+
+// ReadPane returns the recent terminal output of any pane.
+func (c *Client) ReadPane(ctx context.Context, paneID string, lines int) (string, error) {
+	if lines <= 0 {
+		lines = 60
+	}
+	out, err := c.execCommand(ctx, "pane", "read", paneID, "--source", "recent-unwrapped", "--lines", strconv.Itoa(lines))
 	if err != nil {
 		return "", err
 	}
