@@ -130,6 +130,12 @@ func (p *Pane) DisplayName() string {
 	if agentKind == "" {
 		agentKind = "shell"
 	}
+	// Clean up shell prompt titles like "akbar@host:~/path"
+	if agentKind == "shell" {
+		if strings.Contains(title, "@") || strings.Contains(title, "~") || strings.Contains(title, "/") || title == "zsh" || title == "bash" || title == "sh" {
+			title = ""
+		}
+	}
 
 	if projectName != "" && title != "" {
 		return fmt.Sprintf("[%s] %s: %s", agentKind, projectName, title)
@@ -143,6 +149,21 @@ func (p *Pane) DisplayName() string {
 	return fmt.Sprintf("[%s] %s", agentKind, p.PaneID)
 }
 
+type PaneGetResponse struct {
+	ID     string `json:"id"`
+	Result struct {
+		Pane Pane   `json:"pane"`
+		Type string `json:"type"`
+	} `json:"result"`
+}
+
+type WorkspaceGetResponse struct {
+	ID     string `json:"id"`
+	Result struct {
+		Type      string    `json:"type"`
+		Workspace Workspace `json:"workspace"`
+	} `json:"result"`
+}
 type PaneListResponse struct {
 	ID     string `json:"id"`
 	Result struct {

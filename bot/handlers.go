@@ -233,25 +233,39 @@ func (s *BotServer) handleWorkspaces(c tele.Context) error {
 func (s *BotServer) handleStatus(c tele.Context) error {
 	paneID := s.state.GetSelectedAgent(c.Sender().ID)
 	if paneID == "" {
-		return c.Reply("⚠️ No agent selected. Use `/agents` to select one.")
+		return c.Reply("⚠️ No agent selected. Use `/agents` or `/workspaces` to select one.")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	agent, err := s.client.GetAgent(ctx, paneID)
+	agent, _ := s.client.GetAgent(ctx, paneID)
+	if agent != nil {
+		msg := fmt.Sprintf(
+			"📊 *Agent Status*\n\n" +
+				"• Title: *%s*\n" +
+				"• Status: `%s`\n" +
+				"• Project / CWD: `%s`\n" +
+				"• Harness: `%s`\n" +
+				"• Internal Pane: `%s`\n",
+			agent.DisplayName(), agent.AgentStatus, agent.Cwd, agent.Agent, agent.PaneID,
+		)
+		return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
+	}
+
+	pane, err := s.client.GetPane(ctx, paneID)
 	if err != nil {
-		return c.Reply(fmt.Sprintf("❌ Failed to get agent status for `[%s]`: %v", paneID, err))
+		return c.Reply(fmt.Sprintf("❌ Failed to get pane status for `[%s]`: %v", paneID, err))
 	}
 
 	msg := fmt.Sprintf(
-		"📊 *Status Agent*\n\n" +
+		"📊 *Terminal Pane Status*\n\n" +
 			"• Title: *%s*\n" +
-			"• Status: `%s`\n" +
+			"• Mode: `Terminal Shell`\n" +
 			"• Project / CWD: `%s`\n" +
-			"• Harness: `%s`\n" +
+			"• Workspace: `%s`\n" +
 			"• Internal Pane: `%s`\n",
-		agent.DisplayName(), agent.AgentStatus, agent.Cwd, agent.Agent, agent.PaneID,
+		pane.DisplayName(), pane.Cwd, pane.WorkspaceID, pane.PaneID,
 	)
 	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
@@ -267,11 +281,8 @@ func (s *BotServer) handleRead(c tele.Context) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	name := s.client.GetPaneDisplayName(ctx, paneID)
 	agent, _ := s.client.GetAgent(ctx, paneID)
-	name := paneID
-	if agent != nil && agent.DisplayName() != "" {
-		name = agent.DisplayName()
-	}
 
 	// If user calls `/read` without arguments, show the complete last assistant response if available
 	if len(args) == 0 && agent != nil && agent.AgentSession != nil && agent.AgentSession.Kind == "path" {
@@ -794,6 +805,11 @@ func (s *BotServer) onSelectWorkspace(c tele.Context) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	wsLabel := wsID
+	if ws, err := s.client.GetWorkspace(ctx, wsID); err == nil && ws.Label != "" {
+		wsLabel = ws.Label
+	}
+
 	panes, err := s.client.ListPanes(ctx, wsID)
 	if err != nil {
 		_ = c.Respond(&tele.CallbackResponse{Text: "Failed to load panes"})
@@ -801,13 +817,22 @@ func (s *BotServer) onSelectWorkspace(c tele.Context) error {
 	}
 
 	currentPane := s.state.GetSelectedAgent(c.Sender().ID)
+	activeName := s.client.GetPaneDisplayName(ctx, currentPane)
+
 	kb := MakePaneKeyboard(wsID, panes, currentPane)
 
-	_ = c.Edit(fmt.Sprintf("📂 *Workspace [%s]*\nSelect a pane to control or inspect:", wsID), &tele.SendOptions{
+	msgText := fmt.Sprintf(
+		"📂 *Workspace: %s* (`%s`)\n\n"+
+			"🎯 *Active Target:* `%s`\n\n"+
+			"Tap a pane below to switch target:",
+		wsLabel, wsID, activeName,
+	)
+
+	_ = c.Edit(msgText, &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
-	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Workspace %s selected", wsID)})
+	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Workspace: %s", wsLabel)})
 }
 
 func (s *BotServer) onRefreshWorkspaces(c tele.Context) error {
@@ -840,20 +865,31 @@ func (s *BotServer) onSelectPane(c tele.Context) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	name := paneID
-	if a, err := s.client.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
-		name = a.DisplayName()
-	}
+	name := s.client.GetPaneDisplayName(ctx, paneID)
 
 	wsID := s.state.GetSelectedWorkspace(c.Sender().ID)
+	wsLabel := wsID
+	if ws, err := s.client.GetWorkspace(ctx, wsID); err == nil && ws.Label != "" {
+		wsLabel = ws.Label
+	}
+
 	panes, _ := s.client.ListPanes(ctx, wsID)
 	kb := MakePaneKeyboard(wsID, panes, paneID)
 
-	_ = c.Edit(fmt.Sprintf("🎯 *Active pane set to:*\n*%s*\n\nYou can now send prompts or shell commands directly!", name), &tele.SendOptions{
+	msgText := fmt.Sprintf(
+		"🎯 *Active Target Changed!*\n\n"+
+			"• Name: *%s*\n"+
+			"• Pane ID: `%s`\n"+
+			"• Workspace: *%s* (`%s`)\n\n"+
+			"Send text to prompt this target directly, or choose another pane:",
+		name, paneID, wsLabel, wsID,
+	)
+
+	_ = c.Edit(msgText, &tele.SendOptions{
 		ParseMode:   tele.ModeMarkdown,
 		ReplyMarkup: kb,
 	})
-	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Pane %s active", paneID)})
+	return c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Active: %s", name)})
 }
 
 func (s *BotServer) onActionWorkspace(c tele.Context) error {

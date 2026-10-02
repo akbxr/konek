@@ -124,11 +124,13 @@ func MakeWorkspaceKeyboard(workspaces []herdr.Workspace, currentWsID string) *te
 
 	for _, w := range workspaces {
 		statusEmoji := "📂"
+		selectedMark := ""
 		if w.WorkspaceID == currentWsID {
 			statusEmoji = "🎯"
+			selectedMark = " (Active)"
 		}
 
-		label := fmt.Sprintf("%s %s (%d panes)", statusEmoji, w.Label, w.PaneCount)
+		label := fmt.Sprintf("%s %s (%d panes)%s", statusEmoji, w.Label, w.PaneCount, selectedMark)
 		btn := menu.Data(label, "sel_ws", w.WorkspaceID)
 		rows = append(rows, menu.Row(btn))
 	}
@@ -163,12 +165,12 @@ func MakePaneKeyboard(wsID string, panes []herdr.Pane, currentPaneID string) *te
 
 		selectedMark := ""
 		if p.PaneID == currentPaneID {
-			selectedMark = " 🎯"
+			selectedMark = " 🎯 (Active)"
 		}
 
 		name := p.DisplayName()
-		if len([]rune(name)) > 30 {
-			name = string([]rune(name)[:27]) + "..."
+		if len([]rune(name)) > 35 {
+			name = string([]rune(name)[:32]) + "..."
 		}
 
 		label := fmt.Sprintf("%s %s%s", statusEmoji, name, selectedMark)

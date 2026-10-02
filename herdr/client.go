@@ -79,6 +79,45 @@ func (c *Client) GetAgent(ctx context.Context, target string) (*Agent, error) {
 	return &resp.Result.Agent, nil
 }
 
+// GetPane retrieves the details and status of any pane (agent or shell).
+func (c *Client) GetPane(ctx context.Context, paneID string) (*Pane, error) {
+	out, err := c.execCommand(ctx, "pane", "get", paneID)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp PaneGetResponse
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse pane get JSON: %w", err)
+	}
+	return &resp.Result.Pane, nil
+}
+
+// GetWorkspace retrieves the details and label of a workspace.
+func (c *Client) GetWorkspace(ctx context.Context, wsID string) (*Workspace, error) {
+	out, err := c.execCommand(ctx, "workspace", "get", wsID)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp WorkspaceGetResponse
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse workspace get JSON: %w", err)
+	}
+	return &resp.Result.Workspace, nil
+}
+
+// GetPaneDisplayName returns a clean human-readable title for any pane (agent or shell).
+func (c *Client) GetPaneDisplayName(ctx context.Context, paneID string) string {
+	if a, err := c.GetAgent(ctx, paneID); err == nil && a.DisplayName() != "" {
+		return a.DisplayName()
+	}
+	if p, err := c.GetPane(ctx, paneID); err == nil && p.DisplayName() != "" {
+		return p.DisplayName()
+	}
+	return paneID
+}
+
 // PromptAgent submits prompt text to the target agent.
 func (c *Client) PromptAgent(ctx context.Context, target string, prompt string) error {
 	_, err := c.execCommand(ctx, "agent", "prompt", target, prompt)

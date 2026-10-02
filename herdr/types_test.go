@@ -41,3 +41,18 @@ func TestCleanTitleAndDisplayName(t *testing.T) {
 		}
 	}
 }
+
+func TestPaneDisplayName(t *testing.T) {
+	p := &Pane{
+		PaneID:                "wF:pR",
+		Cwd:                   "/Users/akbar/Code/projects/rdns",
+		TerminalTitleStripped: "akbar@AKBARs-MacBook-Air:~/Code/projects/rdns",
+		Agent:                 "",
+	}
+
+	got := p.DisplayName()
+	expected := "[shell] rdns"
+	if got != expected {
+		t.Errorf("got %q, want %q", got, expected)
+	}
+}
